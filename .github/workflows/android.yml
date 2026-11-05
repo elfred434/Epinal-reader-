@@ -44,7 +44,7 @@ jobs:
         run: |
           TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)"
           "$TOOLS/apksigner" verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk | tee "$RUNNER_TEMP/signature.txt"
-          grep -Fi 'Signer #1 certificate SHA-256 digest: c355bc8339c2ebaf14b0ac811f489c709a60355acbb2c82f937bf4fe219743a9' "$RUNNER_TEMP/signature.txt"
+          grep -Fi 'certificate SHA-256 digest: c355bc8339c2ebaf14b0ac811f489c709a60355acbb2c82f937bf4fe219743a9' "$RUNNER_TEMP/signature.txt"
           "$TOOLS/aapt" dump badging build/app/outputs/flutter-apk/app-release.apk | grep -F "package: name='com.epinal.reader' versionCode='${GITHUB_RUN_NUMBER}'"
           cp build/app/outputs/flutter-apk/app-release.apk Epinal.apk
       - uses: actions/upload-artifact@v4

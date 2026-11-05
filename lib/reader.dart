@@ -44,6 +44,15 @@ class _ReaderState extends State<Reader> {
 
   EpubTheme readingTheme() => theme == 2
       ? EpubTheme.dark()
+      : theme == 3
+      ? EpubTheme.custom(
+          backgroundDecoration: const BoxDecoration(color: Color(0xffe9e4ce)),
+          foregroundColor: const Color(0xff343a2e),
+          customCss: {
+            'body': {'line-height': '1.7'},
+            'p': {'line-height': '1.7'},
+          },
+        )
       : theme == 1
       ? EpubTheme.custom(
           backgroundDecoration: const BoxDecoration(color: Color(0xfff4ecd9)),
@@ -401,9 +410,11 @@ class _ReaderState extends State<Reader> {
                 Wrap(
                   spacing: 8,
                   children: List.generate(
-                    3,
+                    4,
                     (i) => ChoiceChip(
-                      label: Text(['Clair', 'Sépia', 'Sombre'][i]),
+                      label: Text(
+                        ['Clair', 'Sépia', 'Sombre', 'Confort visuel'][i],
+                      ),
                       selected: theme == i,
                       onSelected: (_) {
                         theme = i;

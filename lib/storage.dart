@@ -14,6 +14,7 @@ class Book {
   bool hasCover;
   String? cfi;
   double progress;
+  List<String> categories;
   Book({
     required this.id,
     required this.title,
@@ -21,7 +22,8 @@ class Book {
     this.hasCover = false,
     this.cfi,
     this.progress = 0,
-  });
+    List<String>? categories,
+  }) : categories = categories ?? [];
   factory Book.fromJson(Map<String, dynamic> m) => Book(
     id: m['id'] as String,
     title: m['title'] as String,
@@ -29,6 +31,7 @@ class Book {
     hasCover: m['cover'] as bool? ?? false,
     cfi: m['cfi'] as String?,
     progress: (m['progress'] as num?)?.toDouble() ?? 0,
+    categories: (m['categories'] as List?)?.whereType<String>().toList() ?? [],
   );
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -37,6 +40,7 @@ class Book {
     'cover': hasCover,
     'cfi': cfi,
     'progress': progress,
+    'categories': categories,
   };
 }
 
@@ -45,8 +49,10 @@ class Library {
   late SharedPreferences prefs;
   late Directory dir;
   List<Book> books = [];
+  List<String> categories = [];
   Future<void> init() async {
     prefs = await SharedPreferences.getInstance();
+    categories = prefs.getStringList('categories.v1') ?? [];
     dir = Directory('${(await getApplicationDocumentsDirectory()).path}/books');
     await dir.create(recursive: true);
     try {
@@ -65,6 +71,61 @@ class Library {
     'library.v2',
     jsonEncode(books.map((b) => b.toJson()).toList()),
   );
+
+  /// Category names are unique ignoring case and surrounding whitespace.
+  String validateCategory(String name, {String? except}) {
+    final clean = name.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (clean.isEmpty)
+      throw const FormatException('Saisissez un nom de catégorie.');
+    if (clean.length > 40)
+      throw const FormatException(
+        'Le nom doit contenir 40 caractères maximum.',
+      );
+    if (categories.any(
+      (c) => c != except && c.toLowerCase() == clean.toLowerCase(),
+    )) {
+      throw const FormatException('Cette catégorie existe déjà.');
+    }
+    return clean;
+  }
+
+  Future<void> createCategory(String name) async {
+    final clean = validateCategory(name);
+    categories.add(clean);
+    categories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    await prefs.setStringList('categories.v1', categories);
+  }
+
+  Future<void> renameCategory(String oldName, String name) async {
+    final clean = validateCategory(name, except: oldName);
+    final index = categories.indexOf(oldName);
+    if (index == -1) return;
+    categories[index] = clean;
+    categories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    for (final book in books) {
+      book.categories = book.categories
+          .map((c) => c == oldName ? clean : c)
+          .toList();
+    }
+    await save();
+    await prefs.setStringList('categories.v1', categories);
+  }
+
+  Future<void> deleteCategory(String name) async {
+    categories.remove(name);
+    for (final book in books) {
+      book.categories.removeWhere((c) => c == name);
+    }
+    await save();
+    await prefs.setStringList('categories.v1', categories);
+  }
+
+  Future<void> classify(Book book, Iterable<String> selected) async {
+    final choices = selected.toSet();
+    book.categories = categories.where(choices.contains).toList();
+    await save();
+  }
+
   Future<void> migrate() async {
     try {
       final data = await native.invokeMapMethod<String, dynamic>('legacyBooks');

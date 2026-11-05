@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'reader.dart';
+import 'categories.dart';
 import 'storage.dart';
 import 'update.dart';
 
@@ -13,33 +14,83 @@ void main() async {
   runApp(Epinal(library: library));
 }
 
-class Epinal extends StatelessWidget {
+class Epinal extends StatefulWidget {
   final Library library;
   const Epinal({super.key, required this.library});
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Épinal',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff526d55),
-        surface: const Color(0xfff7f7f2),
+  State<Epinal> createState() => _EpinalState();
+}
+
+class _EpinalState extends State<Epinal> {
+  late String mode;
+  @override
+  void initState() {
+    super.initState();
+    mode = widget.library.prefs.getString('app.appearance') ?? 'light';
+    if (!['light', 'dark', 'comfort'].contains(mode)) mode = 'light';
+  }
+
+  void setMode(String value) {
+    setState(() => mode = value);
+    widget.library.prefs.setString('app.appearance', value);
+    // A global appearance choice also gives books the matching reading palette.
+    widget.library.prefs.setInt(
+      'reader.theme',
+      value == 'dark'
+          ? 2
+          : value == 'comfort'
+          ? 3
+          : 0,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = mode == 'dark';
+    final comfort = mode == 'comfort';
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xff526d55),
+      brightness: dark ? Brightness.dark : Brightness.light,
+      surface: dark
+          ? const Color(0xff151c18)
+          : comfort
+          ? const Color(0xffeee9d8)
+          : const Color(0xfff7f7f2),
+    );
+    return MaterialApp(
+      title: 'Épinal',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: scheme,
+        scaffoldBackgroundColor: scheme.surface,
+        useMaterial3: true,
       ),
-      useMaterial3: true,
-    ),
-    home: Shelf(library: library),
-  );
+      home: Shelf(
+        library: widget.library,
+        appearance: mode,
+        onAppearance: setMode,
+      ),
+    );
+  }
 }
 
 class Shelf extends StatefulWidget {
   final Library library;
-  const Shelf({super.key, required this.library});
+  final String appearance;
+  final ValueChanged<String> onAppearance;
+  const Shelf({
+    super.key,
+    required this.library,
+    required this.appearance,
+    required this.onAppearance,
+  });
   @override
   State<Shelf> createState() => _ShelfState();
 }
 
 class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
   String query = '';
+  String? selectedCategory; // null = all, empty string = unclassified.
   bool busy = false, checking = false, waitingPermission = false;
   AppUpdate? available;
   Library get library => widget.library;
@@ -191,9 +242,71 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> chooseAppearance() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Apparence',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final choice in <(String, String, IconData)>[
+              ('light', 'Clair', Icons.light_mode_outlined),
+              ('dark', 'Sombre', Icons.dark_mode_outlined),
+              ('comfort', 'Confort visuel', Icons.remove_red_eye_outlined),
+            ])
+              ListTile(
+                leading: Icon(choice.$3),
+                title: Text(choice.$2),
+                subtitle: choice.$1 == 'comfort'
+                    ? const Text('Couleurs chaudes et fond adouci')
+                    : null,
+                trailing: widget.appearance == choice.$1
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(c, choice.$1),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) widget.onAppearance(selected);
+  }
+
+  Future<void> manage() async {
+    await manageCategories(context, library);
+    if (mounted)
+      setState(() {
+        if (selectedCategory != null &&
+            selectedCategory!.isNotEmpty &&
+            !library.categories.contains(selectedCategory))
+          selectedCategory = null;
+      });
+  }
+
+  Future<void> classify(Book book) async {
+    await classifyBook(context, library, book);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final items = library.books
+        .where(
+          (b) =>
+              selectedCategory == null ||
+              (selectedCategory == ''
+                  ? b.categories.isEmpty
+                  : b.categories.contains(selectedCategory)),
+        )
         .where(
           (b) => '${b.title} ${b.author}'.toLowerCase().contains(
             query.toLowerCase(),
@@ -201,7 +314,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
         )
         .toList();
     return Scaffold(
-      backgroundColor: const Color(0xfff7f7f2),
+      backgroundColor: scheme.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -224,6 +337,12 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                      ),
+                      IconButton(
+                        tooltip: 'Apparence',
+                        color: Colors.white,
+                        onPressed: chooseAppearance,
+                        icon: const Icon(Icons.palette_outlined),
                       ),
                       IconButton(
                         tooltip: 'Vérifier les mises à jour',
@@ -257,8 +376,8 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                   Expanded(
                     child: Text(
                       '${library.books.length} LIVRE${library.books.length > 1 ? 'S' : ''}',
-                      style: const TextStyle(
-                        color: Color(0xff526d55),
+                      style: TextStyle(
+                        color: scheme.primary,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
                       ),
@@ -280,12 +399,61 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                   prefixIcon: const Icon(Icons.search),
                   hintText: 'Rechercher un titre ou un auteur',
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: scheme.surfaceContainerLow,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
                   ),
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: const Text('Tous'),
+                              selected: selectedCategory == null,
+                              onSelected: (_) =>
+                                  setState(() => selectedCategory = null),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: const Text('Sans catégorie'),
+                              selected: selectedCategory == '',
+                              onSelected: (_) =>
+                                  setState(() => selectedCategory = ''),
+                            ),
+                          ),
+                          for (final category in library.categories)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(category),
+                                selected: selectedCategory == category,
+                                onSelected: (_) =>
+                                    setState(() => selectedCategory = category),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gérer les catégories',
+                    onPressed: manage,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                  ),
+                ],
               ),
             ),
             if (busy) const LinearProgressIndicator(),
@@ -300,7 +468,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                               : 'Aucun livre ne correspond à votre recherche.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.grey.shade600,
+                            color: scheme.onSurfaceVariant,
                             height: 1.6,
                           ),
                         ),
@@ -312,7 +480,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                       itemBuilder: (context, i) {
                         final b = items[i];
                         return Card(
-                          color: Colors.white,
+                          color: scheme.surfaceContainerLow,
                           elevation: 0,
                           margin: const EdgeInsets.only(bottom: 12),
                           shape: RoundedRectangleBorder(
@@ -370,16 +538,28 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: Colors.grey.shade600,
+                                            color: scheme.onSurfaceVariant,
                                           ),
                                         ),
+                                        if (b.categories.isNotEmpty) ...[
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            b.categories.join(' · '),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: scheme.primary,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(height: 10),
                                         Text(
                                           b.cfi == null
                                               ? 'COMMENCER LA LECTURE →'
                                               : 'REPRENDRE · ${(b.progress * 100).round()} % →',
-                                          style: const TextStyle(
-                                            color: Color(0xff526d55),
+                                          style: TextStyle(
+                                            color: scheme.primary,
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -387,10 +567,27 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    tooltip: 'Retirer',
-                                    onPressed: () => remove(b),
-                                    icon: const Icon(Icons.more_vert),
+                                  PopupMenuButton<String>(
+                                    tooltip: 'Options du livre',
+                                    onSelected: (value) {
+                                      if (value == 'classify') {
+                                        classify(b);
+                                      } else if (value == 'remove') {
+                                        remove(b);
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'classify',
+                                        child: Text(
+                                          'Classer dans des catégories',
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'remove',
+                                        child: Text('Retirer le livre'),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

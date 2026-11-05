@@ -25,3 +25,8 @@ Le workflow a besoin des secrets Actions `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`,
 
 ## Développement
 Flutter 3.47.9, JDK 17, Android SDK et `flutter pub get`. `flutter analyze` puis `flutter test`. La compilation de release nécessite les variables d’environnement de signature du workflow. Les dépendances sont verrouillées dans `pubspec.lock`.
+
+## Apparence et catégories
+- Depuis l’icône palette en haut de la bibliothèque, choisissez Clair, Sombre ou Confort visuel. Le choix est mémorisé et applique aussi une palette de lecture correspondante. Dans le livre, **Confort de lecture** permet d’adapter le thème indépendamment, ainsi que la taille du texte.
+- Le mode Confort utilise des tons chauds, un fond adouci et un interligne plus large dans les livres compatibles. Il ne modifie pas la luminosité de l’écran et n’est pas un dispositif médical ; ajustez également la luminosité dans Android selon votre confort.
+- Depuis l’icône de dossier de la bibliothèque, créez, renommez ou supprimez des catégories. Le menu de chaque livre permet de lui attribuer plusieurs catégories ; filtrez ensuite par catégorie ou choisissez « Sans catégorie ». Supprimer une catégorie ne supprime pas les livres. Les catégories restent stockées localement.

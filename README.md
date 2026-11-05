@@ -7,7 +7,7 @@ Lecteur EPUB Android en français. L’application conserve l’identifiant `com
 - Lecture EPUB 2/3 sans DRM grâce à `flutter_epub_viewer` / EPUB.js : table des matières, navigation, position et progression, recherche dans le texte.
 - Signets, surlignages jaunes et notes locales. Sélectionner du texte puis choisir **Surligner la sélection** dans le menu de lecture ; retrouver ou supprimer les passages depuis **Passages et notes**.
 - Taille de texte, thèmes clair/sépia/sombre et pagination ou défilement ; lecture vocale de la page courante (moteur et voix Android requis).
-- Vérification de la dernière GitHub Release au démarrage et manuellement depuis l’icône de mise à jour, téléchargement de l’APK, contrôle SHA-256 et ouverture de l’installateur système.
+- Vérification de la dernière GitHub Release au démarrage et manuellement depuis Paramètres → Vérifier les mises à jour, téléchargement de l’APK, contrôle SHA-256 et ouverture de l’installateur système.
 - Les livres importés dans la version native précédente sont copiés à la première ouverture. Les positions de cette ancienne version, enregistrées en pixels plutôt qu’en CFI, ne sont pas converties. Les fichiers d’origine restent intacts.
 
 ## Mise à jour et signature
@@ -27,9 +27,9 @@ Le workflow a besoin des secrets Actions `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`,
 Flutter 3.47.9, JDK 17, Android SDK et `flutter pub get`. `flutter analyze` puis `flutter test`. La compilation de release nécessite les variables d’environnement de signature du workflow. Les dépendances sont verrouillées dans `pubspec.lock`.
 
 ## Apparence et catégories
-- Depuis l’icône palette en haut de la bibliothèque, choisissez Clair, Sombre ou Confort visuel. Le choix est mémorisé et applique aussi une palette de lecture correspondante. Dans le livre, **Confort de lecture** permet d’adapter le thème indépendamment, ainsi que la taille du texte.
+- Depuis Paramètres → Apparence, choisissez Clair, Sombre ou Confort visuel. Le choix est mémorisé et applique aussi une palette de lecture correspondante. Dans le livre, **Confort de lecture** permet d’adapter le thème indépendamment, ainsi que la taille du texte.
 - Le mode Confort utilise des tons chauds, un fond adouci et un interligne plus large dans les livres compatibles. Il ne modifie pas la luminosité de l’écran et n’est pas un dispositif médical ; ajustez également la luminosité dans Android selon votre confort.
-- Depuis l’icône de dossier de la bibliothèque, créez, renommez ou supprimez des catégories. Le menu de chaque livre permet de lui attribuer plusieurs catégories ; filtrez ensuite par catégorie ou choisissez « Sans catégorie ». Supprimer une catégorie ne supprime pas les livres. Les catégories restent stockées localement.
+- Depuis Paramètres → Gérer les catégories, créez, renommez ou supprimez des catégories. Le menu de chaque livre permet de lui attribuer plusieurs catégories ; filtrez ensuite par catégorie ou choisissez « Sans catégorie ». Supprimer une catégorie ne supprime pas les livres. Les catégories restent stockées localement.
 - Dans le sommaire d’un livre, recherchez un titre ou un numéro de chapitre pour filtrer la liste ; la recherche ignore les majuscules et les accents, et un appui ouvre directement le chapitre.
 
 ### Limiter les caches dans l’espace de travail
@@ -43,6 +43,11 @@ Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conserv
 - **Long strip** : défilement vertical libre et continu.
 
 Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Les gestes et la mise en page peuvent varier selon l’EPUB ; les modes doivent être vérifiés sur appareil, en particulier pour les livres à mise en page fixe et en écriture verticale.
+
+## Bibliothèque
+- Les boutons de la barre de bibliothèque permettent de basculer entre la liste et les cartes. La vue choisie est enregistrée localement.
+- Dans le menu ⋮ d’un livre, **Choisir une image de couverture** accepte les fichiers JPG, PNG et WebP (12 Mo et 20 mégapixels maximum). La vignette est conservée dans le stockage privé, sans modifier le fichier EPUB ni l’image d’origine. **Restaurer la couverture EPUB** rétablit la couverture intégrée si elle existe, ou la vignette par défaut sinon.
+- Les réglages d’apparence, de catégories et de mise à jour sont regroupés dans l’écran **Paramètres**.
 
 ## Icône
 L’illustration source est dans `assets/branding/epinal-icon.png`. Les ressources Android comprennent une icône classique et ronde pour les appareils anciens, ainsi qu’une icône adaptative pour Android 8 et versions ultérieures, déclinées aux cinq densités Android.

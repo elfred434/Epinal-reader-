@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'reader.dart';
 import 'categories.dart';
 import 'storage.dart';
+import 'settings_page.dart';
 import 'update.dart';
 
 void main() async {
@@ -92,12 +92,14 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
   String query = '';
   String? selectedCategory; // null = all, empty string = unclassified.
   bool busy = false, checking = false, waitingPermission = false;
+  late bool gridView;
   AppUpdate? available;
   Library get library => widget.library;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    gridView = library.prefs.getBool('library.grid') ?? false;
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => checkUpdate(quiet: true),
     );
@@ -242,46 +244,18 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> chooseAppearance() async {
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              title: Text(
-                'Apparence',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            for (final choice in <(String, String, IconData)>[
-              ('light', 'Clair', Icons.light_mode_outlined),
-              ('dark', 'Sombre', Icons.dark_mode_outlined),
-              ('comfort', 'Confort visuel', Icons.remove_red_eye_outlined),
-            ])
-              ListTile(
-                leading: Icon(choice.$3),
-                title: Text(choice.$2),
-                subtitle: choice.$1 == 'comfort'
-                    ? const Text('Couleurs chaudes et fond adouci')
-                    : null,
-                trailing: widget.appearance == choice.$1
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () => Navigator.pop(c, choice.$1),
-              ),
-            const SizedBox(height: 12),
-          ],
+  Future<void> openSettings() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          library: library,
+          appearance: widget.appearance,
+          onAppearance: widget.onAppearance,
+          onCheckUpdate: () => checkUpdate(),
         ),
       ),
     );
-    if (selected != null) widget.onAppearance(selected);
-  }
-
-  Future<void> manage() async {
-    await manageCategories(context, library);
     if (mounted)
       setState(() {
         if (selectedCategory != null &&
@@ -291,9 +265,267 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       });
   }
 
+  Future<void> setView(bool grid) async {
+    setState(() => gridView = grid);
+    await library.prefs.setBool('library.grid', grid);
+  }
+
+  Future<void> chooseCover(Book book) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
+      );
+      final path = result?.files.single.path;
+      if (path == null || !mounted) return;
+      setState(() => busy = true);
+      await library.setCustomCover(book, File(path));
+      await FileImage(library.cover(book)).evict();
+      if (mounted) setState(() {});
+      snack('Couverture mise à jour.');
+    } catch (e) {
+      snack(
+        e is FormatException
+            ? e.message
+            : 'Impossible de lire cette image. Choisissez un JPG, PNG ou WebP valide.',
+      );
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> restoreCover(Book book) async {
+    if (mounted) setState(() => busy = true);
+    try {
+      await library.restoreOriginalCover(book);
+      await FileImage(library.cover(book)).evict();
+      if (mounted) setState(() {});
+      snack(
+        book.hasCover
+            ? 'Couverture originale restaurée.'
+            : 'Aucune couverture dans ce livre.',
+      );
+    } catch (_) {
+      snack('Impossible de restaurer la couverture de ce livre.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> classify(Book book) async {
     await classifyBook(context, library, book);
     if (mounted) setState(() {});
+  }
+
+  Future<void> openBook(Book book) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Reader(library: library, book: book),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Widget coverFor(Book book, {required double width, required double height}) {
+    Widget fallback() => Container(
+      width: width,
+      height: height,
+      color: const Color(0xff526d55),
+      child: const Icon(
+        Icons.menu_book_rounded,
+        color: Colors.white70,
+        size: 30,
+      ),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: book.hasCover
+          ? Image.file(
+              library.cover(book),
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => fallback(),
+            )
+          : fallback(),
+    );
+  }
+
+  Widget bookMenu(Book book) => PopupMenuButton<String>(
+    tooltip: 'Options du livre',
+    onSelected: (value) {
+      switch (value) {
+        case 'cover':
+          chooseCover(book);
+        case 'restore':
+          restoreCover(book);
+        case 'classify':
+          classify(book);
+        case 'remove':
+          remove(book);
+      }
+    },
+    itemBuilder: (_) => const [
+      PopupMenuItem(
+        value: 'cover',
+        child: Text('Choisir une image de couverture'),
+      ),
+      PopupMenuItem(
+        value: 'restore',
+        child: Text('Restaurer la couverture EPUB'),
+      ),
+      PopupMenuItem(
+        value: 'classify',
+        child: Text('Classer dans des catégories'),
+      ),
+      PopupMenuItem(value: 'remove', child: Text('Retirer le livre')),
+    ],
+  );
+
+  Widget listItem(Book b) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.surfaceContainerLow,
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => openBook(b),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              coverFor(b, width: 62, height: 86),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      b.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      b.author.isEmpty ? 'Auteur inconnu' : b.author,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                    if (b.categories.isNotEmpty)
+                      Text(
+                        b.categories.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: scheme.primary, fontSize: 11),
+                      ),
+                    const SizedBox(height: 7),
+                    Text(
+                      b.cfi == null
+                          ? 'À LIRE'
+                          : '${(b.progress * 100).round()} % LU',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              bookMenu(b),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget gridItem(Book b) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.surfaceContainerLow,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () => openBook(b),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                    child: coverFor(
+                      b,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                  ),
+                  Positioned(
+                    right: 5,
+                    top: 5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: scheme.surface.withValues(alpha: .9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: bookMenu(b),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    b.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    b.author.isEmpty ? 'Auteur inconnu' : b.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    b.cfi == null
+                        ? 'À LIRE'
+                        : '${(b.progress * 100).round()} % LU',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -321,7 +553,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
             Container(
               width: double.infinity,
               color: const Color(0xff1d2b22),
-              padding: const EdgeInsets.fromLTRB(24, 25, 18, 24),
+              padding: const EdgeInsets.fromLTRB(20, 12, 14, 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -329,48 +561,36 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                     children: [
                       const Expanded(
                         child: Text(
-                          'ÉPINAL   /   LECTEUR EPUB',
+                          'ÉPINAL  /  LECTEUR EPUB',
                           style: TextStyle(
                             color: Color(0xffb2c8ad),
                             fontSize: 11,
-                            letterSpacing: 2,
+                            letterSpacing: 1.8,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Apparence',
+                        tooltip: 'Paramètres',
                         color: Colors.white,
-                        onPressed: chooseAppearance,
-                        icon: const Icon(Icons.palette_outlined),
-                      ),
-                      IconButton(
-                        tooltip: 'Vérifier les mises à jour',
-                        color: Colors.white,
-                        onPressed: () => checkUpdate(),
-                        icon: const Icon(Icons.system_update_alt),
+                        onPressed: openSettings,
+                        icon: const Icon(Icons.settings_outlined),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
                   const Text(
                     'Votre bibliothèque',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 30,
+                      fontSize: 27,
                       fontWeight: FontWeight.w700,
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Un peu de temps pour soi, une page à la fois.',
-                    style: TextStyle(color: Color(0xffc4d0c3)),
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -379,10 +599,26 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                       style: TextStyle(
                         color: scheme.primary,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
+                        letterSpacing: 1,
+                        fontSize: 12,
                       ),
                     ),
                   ),
+                  IconButton(
+                    tooltip: 'Vue liste',
+                    isSelected: !gridView,
+                    onPressed: () => setView(false),
+                    icon: const Icon(Icons.view_list_outlined),
+                    selectedIcon: const Icon(Icons.view_list),
+                  ),
+                  IconButton(
+                    tooltip: 'Vue cartes',
+                    isSelected: gridView,
+                    onPressed: () => setView(true),
+                    icon: const Icon(Icons.grid_view_outlined),
+                    selectedIcon: const Icon(Icons.grid_view),
+                  ),
+                  const SizedBox(width: 4),
                   FilledButton.icon(
                     onPressed: busy ? null : importBook,
                     icon: const Icon(Icons.add),
@@ -394,7 +630,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: TextField(
-                onChanged: (s) => setState(() => query = s),
+                onChanged: (value) => setState(() => query = value),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   hintText: 'Rechercher un titre ou un auteur',
@@ -407,52 +643,39 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
-              child: Row(
+            SizedBox(
+              height: 56,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(20, 5, 20, 5),
                 children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: const Text('Tous'),
-                              selected: selectedCategory == null,
-                              onSelected: (_) =>
-                                  setState(() => selectedCategory = null),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: const Text('Sans catégorie'),
-                              selected: selectedCategory == '',
-                              onSelected: (_) =>
-                                  setState(() => selectedCategory = ''),
-                            ),
-                          ),
-                          for (final category in library.categories)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ChoiceChip(
-                                label: Text(category),
-                                selected: selectedCategory == category,
-                                onSelected: (_) =>
-                                    setState(() => selectedCategory = category),
-                              ),
-                            ),
-                        ],
-                      ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: const Text('Tous'),
+                      selected: selectedCategory == null,
+                      onSelected: (_) =>
+                          setState(() => selectedCategory = null),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Gérer les catégories',
-                    onPressed: manage,
-                    icon: const Icon(Icons.create_new_folder_outlined),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: const Text('Sans catégorie'),
+                      selected: selectedCategory == '',
+                      onSelected: (_) => setState(() => selectedCategory = ''),
+                    ),
                   ),
+                  for (final category in library.categories)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(category),
+                        selected: selectedCategory == category,
+                        onSelected: (_) =>
+                            setState(() => selectedCategory = category),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -474,153 +697,40 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                         ),
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: items.length,
-                      itemBuilder: (context, i) {
-                        final b = items[i];
-                        return Card(
-                          color: scheme.surfaceContainerLow,
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      Reader(library: library, book: b),
-                                ),
-                              );
-                              if (mounted) setState(() {});
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: b.hasCover
-                                        ? Image.file(
-                                            library.cover(b),
-                                            width: 62,
-                                            height: 86,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, _, _) =>
-                                                fallback(),
-                                          )
-                                        : fallback(),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          b.title,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 5),
-                                        Text(
-                                          b.author.isEmpty
-                                              ? 'Auteur inconnu'
-                                              : b.author,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: scheme.onSurfaceVariant,
-                                          ),
-                                        ),
-                                        if (b.categories.isNotEmpty) ...[
-                                          const SizedBox(height: 5),
-                                          Text(
-                                            b.categories.join(' · '),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: scheme.primary,
-                                              fontSize: 11,
-                                            ),
-                                          ),
-                                        ],
-                                        const SizedBox(height: 10),
-                                        Text(
-                                          b.cfi == null
-                                              ? 'COMMENCER LA LECTURE →'
-                                              : 'REPRENDRE · ${(b.progress * 100).round()} % →',
-                                          style: TextStyle(
-                                            color: scheme.primary,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuButton<String>(
-                                    tooltip: 'Options du livre',
-                                    onSelected: (value) {
-                                      if (value == 'classify') {
-                                        classify(b);
-                                      } else if (value == 'remove') {
-                                        remove(b);
-                                      }
-                                    },
-                                    itemBuilder: (_) => const [
-                                      PopupMenuItem(
-                                        value: 'classify',
-                                        child: Text(
-                                          'Classer dans des catégories',
-                                        ),
-                                      ),
-                                      PopupMenuItem(
-                                        value: 'remove',
-                                        child: Text('Retirer le livre'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                  : gridView
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        final count = constraints.maxWidth >= 700
+                            ? 4
+                            : constraints.maxWidth >= 500
+                            ? 3
+                            : 2;
+                        final width =
+                            (constraints.maxWidth - 40 - (count - 1) * 12) /
+                            count;
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                          itemCount: items.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: count,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                mainAxisExtent: width * 1.15 + 90,
                               ),
-                            ),
-                          ),
+                          itemBuilder: (_, index) => gridItem(items[index]),
                         );
                       },
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                      itemCount: items.length,
+                      itemBuilder: (_, index) => listItem(items[index]),
                     ),
-            ),
-            FutureBuilder<PackageInfo>(
-              future: PackageInfo.fromPlatform(),
-              builder: (_, snap) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  'ÉPINAL  ${snap.data?.version ?? ''}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
             ),
           ],
         ),
       ),
     );
   }
-
-  Widget fallback() => Container(
-    width: 62,
-    height: 86,
-    color: const Color(0xff526d55),
-    child: const Icon(Icons.menu_book_rounded, color: Colors.white70, size: 30),
-  );
 }

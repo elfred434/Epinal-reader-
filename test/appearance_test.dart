@@ -21,24 +21,26 @@ void main() {
       final library = Library()..prefs = await SharedPreferences.getInstance();
       await tester.pumpWidget(Epinal(library: library));
       await tester.pump();
-      await tester.tap(find.byTooltip('Apparence'));
+      await tester.tap(find.byTooltip('Paramètres'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Apparence'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sombre'));
       await tester.pumpAndSettle();
       expect(library.prefs.getString('app.appearance'), 'dark');
       expect(library.prefs.getInt('reader.theme'), 2);
       expect(
-        Theme.of(tester.element(find.text('Votre bibliothèque'))).brightness,
+        Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.dark,
       );
-      await tester.tap(find.byTooltip('Apparence'));
+      await tester.tap(find.text('Apparence'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Confort visuel'));
       await tester.pumpAndSettle();
       expect(library.prefs.getString('app.appearance'), 'comfort');
       expect(library.prefs.getInt('reader.theme'), 3);
       expect(
-        Theme.of(tester.element(find.text('Votre bibliothèque'))).brightness,
+        Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.light,
       );
     },
@@ -72,5 +74,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Livre classé'), findsNothing);
     expect(find.text('Livre libre'), findsOneWidget);
+  });
+  testWidgets('bascule liste/cartes mémorisée et options du livre', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'Épinal',
+      packageName: 'com.epinal.reader',
+      version: '1.0.10',
+      buildNumber: '10',
+      buildSignature: '',
+    );
+    final library = Library()..prefs = await SharedPreferences.getInstance();
+    library.books = [Book(id: '1', title: 'Roman', author: 'Auteur')];
+    await tester.pumpWidget(Epinal(library: library));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsNothing);
+    await tester.tap(find.byTooltip('Vue cartes'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsOneWidget);
+    expect(library.prefs.getBool('library.grid'), isTrue);
+    await tester.tap(find.byTooltip('Options du livre'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisir une image de couverture'), findsOneWidget);
+    expect(find.text('Restaurer la couverture EPUB'), findsOneWidget);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Vue liste'));
+    await tester.pumpAndSettle();
+    expect(library.prefs.getBool('library.grid'), isFalse);
+    await tester.tap(find.byTooltip('Vue cartes'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(Epinal(library: library));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsOneWidget);
+  });
+  testWidgets('bibliothèque en cartes adaptée à un petit écran', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({'library.grid': true});
+    PackageInfo.setMockInitialValues(
+      appName: 'Épinal',
+      packageName: 'com.epinal.reader',
+      version: '1.0.10',
+      buildNumber: '10',
+      buildSignature: '',
+    );
+    final library = Library()..prefs = await SharedPreferences.getInstance();
+    library.books = [
+      Book(
+        id: '1',
+        title: 'Un très long titre de roman qui doit rester lisible',
+        author: 'Auteur',
+      ),
+    ];
+    await tester.pumpWidget(Epinal(library: library));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridView), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

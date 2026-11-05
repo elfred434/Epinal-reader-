@@ -1,11 +1,53 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:epubx/epubx.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Decode off the UI thread and reject images whose encoded or decoded size
+/// would put excessive pressure on a mobile device.
+Uint8List prepareCover(Uint8List bytes) {
+  if (bytes.isEmpty || bytes.length > 12 * 1024 * 1024) {
+    throw const FormatException('L’image doit faire moins de 12 Mo.');
+  }
+  try {
+    final decoder = img.findDecoderForData(bytes);
+    final info = decoder?.startDecode(bytes);
+    if (info == null ||
+        info.width <= 0 ||
+        info.height <= 0 ||
+        info.width * info.height > 20 * 1000 * 1000 ||
+        info.width > 10000 ||
+        info.height > 10000) {
+      throw const FormatException('Image invalide ou trop grande.');
+    }
+    final image = decoder!.decodeFrame(0);
+    if (image == null) throw const FormatException('Image illisible.');
+    final maxSide = image.width > image.height ? image.width : image.height;
+    final resized = maxSide <= 1200
+        ? img.bakeOrientation(image)
+        : image.width >= image.height
+        ? img.copyResize(
+            image,
+            width: 1200,
+            interpolation: img.Interpolation.average,
+          )
+        : img.copyResize(
+            image,
+            height: 1200,
+            interpolation: img.Interpolation.average,
+          );
+    return Uint8List.fromList(img.encodeJpg(resized, quality: 86));
+  } on FormatException {
+    rethrow;
+  } catch (_) {
+    throw const FormatException('Image illisible ou non prise en charge.');
+  }
+}
 
 class Book {
   final String id;
@@ -184,6 +226,44 @@ class Library {
     books.insert(0, b);
     await save();
     return b;
+  }
+
+  /// Replaces only the private thumbnail, never the original EPUB or image.
+  Future<void> setCustomCover(Book book, File source) async {
+    final size = await source.length();
+    if (size == 0 || size > 12 * 1024 * 1024) {
+      throw const FormatException('L’image doit faire moins de 12 Mo.');
+    }
+    final result = await compute(prepareCover, await source.readAsBytes());
+    final temp = File('${cover(book).path}.tmp');
+    try {
+      await temp.writeAsBytes(result, flush: true);
+      await temp.rename(cover(book).path);
+      book.hasCover = true;
+      await save();
+    } finally {
+      if (await temp.exists()) await temp.delete();
+    }
+  }
+
+  /// Restore the embedded cover if present; otherwise use the placeholder.
+  Future<void> restoreOriginalCover(Book book) async {
+    final epub = await EpubReader.openBook(await file(book).readAsBytes());
+    final image = await epub.readCover();
+    if (image == null) {
+      if (await cover(book).exists()) await cover(book).delete();
+      book.hasCover = false;
+    } else {
+      final temp = File('${cover(book).path}.tmp');
+      try {
+        await temp.writeAsBytes(img.encodeJpg(image, quality: 80), flush: true);
+        await temp.rename(cover(book).path);
+        book.hasCover = true;
+      } finally {
+        if (await temp.exists()) await temp.delete();
+      }
+    }
+    await save();
   }
 
   Future<void> remove(Book b) async {

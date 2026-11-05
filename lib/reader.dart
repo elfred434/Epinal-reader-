@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'storage.dart';
+import 'table_of_contents.dart';
 
 class Reader extends StatefulWidget {
   final Library library;
@@ -173,54 +174,13 @@ class _ReaderState extends State<Reader> {
   }
 
   void chapterSheet() {
-    final flat = <(EpubChapter, int)>[];
-    void add(List<EpubChapter> items, int depth) {
-      for (final c in items) {
-        flat.add((c, depth));
-        add(c.subitems, depth + 1);
-      }
-    }
-
-    add(chapters, 0);
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (c) => SizedBox(
-        height: MediaQuery.sizeOf(c).height * .7,
-        child: Column(
-          children: [
-            const ListTile(
-              title: Text(
-                'Sommaire',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            Expanded(
-              child: flat.isEmpty
-                  ? const Center(
-                      child: Text('Sommaire non disponible pour ce livre.'),
-                    )
-                  : ListView.builder(
-                      itemCount: flat.length,
-                      itemBuilder: (_, i) {
-                        final item = flat[i];
-                        return ListTile(
-                          contentPadding: EdgeInsets.only(
-                            left: 16.0 + item.$2 * 16,
-                            right: 16,
-                          ),
-                          title: Text(item.$1.title.trim()),
-                          onTap: () {
-                            Navigator.pop(c);
-                            controller.display(cfi: item.$1.href);
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
+      builder: (_) => TableOfContentsSheet(
+        chapters: chapters,
+        onOpen: (href) => controller.display(cfi: href),
       ),
     );
   }

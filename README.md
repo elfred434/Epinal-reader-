@@ -43,3 +43,6 @@ Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conserv
 - **Long strip** : défilement vertical libre et continu.
 
 Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Les gestes et la mise en page peuvent varier selon l’EPUB ; les modes doivent être vérifiés sur appareil, en particulier pour les livres à mise en page fixe et en écriture verticale.
+
+## Icône
+L’illustration source est dans `assets/branding/epinal-icon.png`. Les ressources Android comprennent une icône classique et ronde pour les appareils anciens, ainsi qu’une icône adaptative pour Android 8 et versions ultérieures, déclinées aux cinq densités Android.

@@ -34,3 +34,12 @@ Flutter 3.47.9, JDK 17, Android SDK et `flutter pub get`. `flutter analyze` puis
 
 ### Limiter les caches dans l’espace de travail
 Dans Arena, utilisez `scripts/flutter-local.sh pub get`, puis `scripts/flutter-local.sh analyze --no-pub` et `scripts/flutter-local.sh test --no-pub` (Flutter doit être dans le `PATH`, ou définissez `FLUTTER_BIN`). Le script place les caches de l’outil et de Pub sous `~/.cache/epinal-reader`, dossier exclu des sauvegardes Arena. Les répertoires générés `.dart_tool` et `build` peuvent être supprimés après les tests ; ils sont régénérés automatiquement. Ne supprimez pas les sources, les fichiers EPUB personnels ni la sauvegarde de la clé de signature.
+
+## Modes de lecture
+Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conservé entre les sessions et s’applique aux livres ouverts ensuite. La première ouverture après mise à jour utilise **Long strip** par défaut : défilement vertical continu (et non page par page), y compris entre les chapitres compatibles.
+- **Left to Right** : pages horizontales, glisser à gauche pour avancer.
+- **Right to Left** : pages horizontales, glisser à droite pour avancer.
+- **Vertical** : pages successives, glisser vers le haut pour avancer.
+- **Long strip** : défilement vertical libre et continu.
+
+Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Les gestes et la mise en page peuvent varier selon l’EPUB ; les modes doivent être vérifiés sur appareil, en particulier pour les livres à mise en page fixe et en écriture verticale.

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'storage.dart';
+import 'reading_mode.dart';
 import 'table_of_contents.dart';
 
 class Reader extends StatefulWidget {
@@ -21,7 +22,9 @@ class _ReaderState extends State<Reader> {
   bool highlightsLoaded = false, speaking = false;
   late int font;
   late int theme;
-  late bool scrolling;
+  late ReadingMode readingMode;
+  bool directionApplied = false, selectingText = false;
+  double? touchX, touchY;
   late String? initialCfi;
   Library get store => widget.library;
   Book get book => widget.book;
@@ -30,7 +33,7 @@ class _ReaderState extends State<Reader> {
     super.initState();
     font = store.prefs.getInt('reader.font') ?? 18;
     theme = store.prefs.getInt('reader.theme') ?? 0;
-    scrolling = store.prefs.getBool('reader.scrolling') ?? false;
+    readingMode = ReadingMode.fromStorage(store.prefs.getString('reader.mode'));
     initialCfi = book.cfi;
     tts.setCompletionHandler(() {
       if (mounted) setState(() => speaking = false);
@@ -72,6 +75,84 @@ class _ReaderState extends State<Reader> {
       final cfi = item['cfi'] as String?;
       if (cfi != null) controller.addHighlight(cfi: cfi, color: Colors.amber);
     }
+  }
+
+  Future<void> selectReadingMode() async {
+    final chosen = await showModalBottomSheet<ReadingMode>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Mode de lecture',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final value in ReadingMode.values)
+              ListTile(
+                title: Text(value.label),
+                subtitle: Text(value.description),
+                leading: Icon(
+                  value == ReadingMode.longStrip
+                      ? Icons.view_stream_outlined
+                      : value == ReadingMode.vertical
+                      ? Icons.swap_vert
+                      : Icons.swap_horiz,
+                ),
+                trailing: value == readingMode ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(c, value),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || chosen == readingMode || !mounted) return;
+    await store.prefs.setString('reader.mode', chosen.name);
+    if (!mounted) return;
+    // Recreate the renderer with the saved CFI: changing direction and flow on
+    // an existing WebView is not reliably supported by the EPUB library.
+    setState(() {
+      initialCfi = book.cfi;
+      readingMode = chosen;
+      directionApplied = false;
+      highlightsLoaded = false;
+      selectingText = false;
+      touchX = touchY = null;
+    });
+  }
+
+  void onViewerLoaded() {
+    if (!directionApplied) {
+      directionApplied = true;
+      if (readingMode == ReadingMode.leftToRight ||
+          readingMode == ReadingMode.rightToLeft) {
+        // EPUB.js otherwise prioritizes a book's page-progression metadata
+        // over the chosen default direction. The method name is constant;
+        // the value is always one of our two trusted enum values.
+        controller.webViewController?.callMethod('rendition.direction', [
+          readingMode.direction.name,
+        ]);
+      }
+    }
+    restoreHighlights();
+  }
+
+  void onTouchStart(double x, double y) {
+    touchX = x;
+    touchY = y;
+  }
+
+  void onTouchEnd(double x, double y) {
+    final startX = touchX, startY = touchY;
+    touchX = touchY = null; // also prevents duplicate callbacks turning twice
+    if (startX == null || startY == null || selectingText) return;
+    final turn = pageTurnForSwipe(readingMode, x - startX, y - startY);
+    if (turn == PageTurn.next) controller.next();
+    if (turn == PageTurn.previous) controller.prev();
   }
 
   Future<void> bookmark() async {
@@ -385,17 +466,15 @@ class _ReaderState extends State<Reader> {
                     ),
                   ),
                 ),
-                SwitchListTile(
+                ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Défilement continu'),
-                  value: scrolling,
-                  onChanged: (v) {
-                    scrolling = v;
-                    store.prefs.setBool('reader.scrolling', v);
-                    controller.setFlow(
-                      flow: v ? EpubFlow.scrolled : EpubFlow.paginated,
-                    );
-                    refresh(() {});
+                  leading: const Icon(Icons.view_carousel_outlined),
+                  title: const Text('Mode de lecture'),
+                  subtitle: Text(readingMode.label),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(c);
+                    selectReadingMode();
                   },
                 ),
               ],
@@ -454,6 +533,8 @@ class _ReaderState extends State<Reader> {
                 savedSheet('highlights');
               case 'select':
                 selectedActions();
+              case 'mode':
+                selectReadingMode();
               case 'settings':
                 options();
               case 'speak':
@@ -471,6 +552,7 @@ class _ReaderState extends State<Reader> {
               value: 'highlights',
               child: Text('Passages et notes'),
             ),
+            const PopupMenuItem(value: 'mode', child: Text('Mode de lecture')),
             const PopupMenuItem(
               value: 'settings',
               child: Text('Confort de lecture'),
@@ -492,23 +574,36 @@ class _ReaderState extends State<Reader> {
         children: [
           Expanded(
             child: EpubViewer(
+              key: ValueKey(readingMode.name),
               epubController: controller,
               epubSource: EpubSource.fromFile(store.file(book)),
               initialCfi: initialCfi,
               initialLocations: store.prefs.getString('locations.${book.id}'),
               displaySettings: EpubDisplaySettings(
                 fontSize: font,
-                flow: scrolling ? EpubFlow.scrolled : EpubFlow.paginated,
+                flow: readingMode.flow,
+                manager: EpubManager.continuous,
+                spread: EpubSpread.none,
+                defaultDirection: readingMode.direction,
+                // Disable the plugin's Android-only horizontal gesture handler:
+                // it otherwise prevents vertical dragging, even in scrolled mode.
+                snap: false,
+                useSnapAnimationAndroid: true,
                 theme: readingTheme(),
                 allowScriptedContent: false,
               ),
               onChaptersLoaded: (v) {
                 if (mounted) setState(() => chapters = v);
               },
-              onEpubLoaded: restoreHighlights,
+              onEpubLoaded: onViewerLoaded,
+              onTouchDown: onTouchStart,
+              onTouchUp: onTouchEnd,
               onTextSelected: (v) {
+                selectingText = true;
                 selected = v;
               },
+              onSelectionChanging: () => selectingText = true,
+              onDeselection: () => selectingText = false,
               onLocationsGenerated: (v) =>
                   store.prefs.setString('locations.${book.id}', v),
               onRelocated: (v) {
@@ -527,9 +622,18 @@ class _ReaderState extends State<Reader> {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: 'Page précédente',
-                  onPressed: controller.prev,
-                  icon: const Icon(Icons.arrow_back),
+                  tooltip: readingMode == ReadingMode.rightToLeft
+                      ? 'Page suivante'
+                      : 'Page précédente',
+                  onPressed: readingMode == ReadingMode.rightToLeft
+                      ? controller.next
+                      : controller.prev,
+                  icon: Icon(
+                    readingMode == ReadingMode.vertical ||
+                            readingMode.isContinuous
+                        ? Icons.arrow_upward
+                        : Icons.arrow_back,
+                  ),
                 ),
                 Expanded(
                   child: Text(
@@ -543,9 +647,18 @@ class _ReaderState extends State<Reader> {
                   icon: const Icon(Icons.bookmark_add_outlined),
                 ),
                 IconButton(
-                  tooltip: 'Page suivante',
-                  onPressed: controller.next,
-                  icon: const Icon(Icons.arrow_forward),
+                  tooltip: readingMode == ReadingMode.rightToLeft
+                      ? 'Page précédente'
+                      : 'Page suivante',
+                  onPressed: readingMode == ReadingMode.rightToLeft
+                      ? controller.prev
+                      : controller.next,
+                  icon: Icon(
+                    readingMode == ReadingMode.vertical ||
+                            readingMode.isContinuous
+                        ? Icons.arrow_downward
+                        : Icons.arrow_forward,
+                  ),
                 ),
               ],
             ),

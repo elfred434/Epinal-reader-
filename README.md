@@ -1,29 +1,27 @@
-# Épinal — lecteur EPUB Android
+# Épinal Reader — Flutter / Dart
 
-Première version de lecteur Android, conçue pour fonctionner localement et sans compte.
+Lecteur EPUB Android en français. L’application conserve l’identifiant `com.epinal.reader` et utilise la même clé de signature que la version Android initiale, afin d’être installée **par-dessus** celle-ci sur Android 7 (API 24) ou plus récent. Android 6, pris en charge par l’ancienne version, n’est plus compatible avec cette version de Flutter.
 
-## Fonctionnalités disponibles
-- Import d’un fichier EPUB depuis le sélecteur Android (100 Mo maximum), copie privée dans l’application.
-- Bibliothèque locale, recherche par titre ou auteur, ouverture et retrait sans toucher au fichier d’origine.
-- Lecture des chapitres de la séquence EPUB, navigation, reprise du dernier chapitre et de la position verticale.
-- Taille de texte ajustable, thèmes clair, sépia et sombre.
-- Fichiers locaux seulement : aucun accès réseau, JavaScript désactivé et ressources d’EPUB confinées à l’archive.
+## Fonctions
+- Import de fichiers EPUB, bibliothèque locale, recherche par titre/auteur, détection des doublons, couverture lorsque disponible, suppression sans toucher au fichier d’origine.
+- Lecture EPUB 2/3 sans DRM grâce à `flutter_epub_viewer` / EPUB.js : table des matières, navigation, position et progression, recherche dans le texte.
+- Signets, surlignages jaunes et notes locales. Sélectionner du texte puis choisir **Surligner la sélection** dans le menu de lecture ; retrouver ou supprimer les passages depuis **Passages et notes**.
+- Taille de texte, thèmes clair/sépia/sombre et pagination ou défilement ; lecture vocale de la page courante (moteur et voix Android requis).
+- Vérification de la dernière GitHub Release au démarrage et manuellement depuis l’icône de mise à jour, téléchargement de l’APK, contrôle SHA-256 et ouverture de l’installateur système.
+- Les livres importés dans la version native précédente sont copiés à la première ouverture. Les positions de cette ancienne version, enregistrées en pixels plutôt qu’en CFI, ne sont pas converties. Les fichiers d’origine restent intacts.
 
-## Limites connues
-- La liste des parties reflète l’ordre interne du livre et les noms de fichiers, **pas** la véritable table des matières EPUB.
-- EPUB 2/3 à texte redistribuable simples visés ; mise en page fixe, scripts interactifs, multimédia, polices ou encodages particuliers ne sont pas garantis. Les EPUB protégés par DRM ne sont pas pris en charge.
-- Pas encore de couvertures extraites, signets multiples, annotations, recherche dans le texte, synthèse vocale, dictionnaire ou synchronisation. La reprise est une position en pixels, pas un EPUB CFI : elle peut être approximative après changement de format d’écran ou de taille du texte.
-- Les données sont locales ; désinstaller l’application les supprime. Faire une sauvegarde des fichiers d’origine.
+## Mise à jour et signature
+Chaque push sur `main` construit un APK signé, l’enregistre comme artefact Actions et le publie dans une GitHub Release `v1.0.NUMÉRO`, sous le nom `Epinal.apk`. Le numéro de build utilise `GITHUB_RUN_NUMBER` et augmente. L’application compare ce numéro à la dernière release publique et vérifie le `digest` SHA-256 de l’asset GitHub avant installation. Android vérifie la signature à l’installation.
 
-## Génération de l’APK
-Chaque push sur `main` ou lancement manuel de **Générer l’APK Android** produit un APK signé téléchargeable depuis l’onglet **Actions**, dans l’artefact `Epinal-APK-signe` (conservé 90 jours). Une exécution doit réussir avant qu’un APK soit disponible. Le numéro de version utilise le numéro de l’exécution GitHub Actions. L’artefact n’est pas automatiquement publié dans GitHub Releases.
+La première version native ne dispose pas du vérificateur : installer une première fois cette version Flutter par-dessus elle. Ensuite, les nouvelles versions peuvent être proposées par l’application. Android exige la confirmation de l’utilisateur et, si nécessaire, l’autorisation d’installer depuis cette source ; aucune installation silencieuse n’est promise. La même clé et le même identifiant sont obligatoires ; la clé et ses mots de passe doivent être conservés en lieu sûr. La désinstallation supprime les données locales. Si l’autorisation a été refusée, relancer le téléchargement depuis la vérification de mise à jour.
 
-Secrets Actions requis : `KEYSTORE_BASE64` (contenu PKCS#12 encodé en base64), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Ne jamais committer ces valeurs. Conserver une copie de sauvegarde sécurisée de la clé ET des mots de passe : perdre la clé peut empêcher la mise à jour des installations existantes. Pour une application déjà publiée, il faut réutiliser sa clé d’origine (ou gérer Play App Signing).
+Le workflow a besoin des secrets Actions `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Ne jamais les ajouter au dépôt. Le dépôt et ses Releases doivent rester publics pour la recherche des mises à jour sans authentification. Pour une distribution via Google Play, remplacer l’auto-installation par l’API de mise à jour Google Play et respecter ses règles de publication.
 
-Pour compiler localement : Android SDK 35, JDK 17, Gradle 8.9, puis `gradle assembleDebug`. Une compilation de production nécessite les variables d’environnement indiquées dans `app/build.gradle`.
+## Limites et confidentialité
+- Les données et livres sont locaux ; les sauvegarder séparément. Pas encore de synchronisation, sauvegarde/export d’annotations, dictionnaire, traductions ni collections.
+- La synthèse vocale lit la page affichée, pas automatiquement tout le livre. La voix dépend de l’appareil ; elle est actuellement configurée en français.
+- Les EPUB avec DRM, scripts et mise en page fixe complexes ne sont pas garantis. Les scripts intégrés aux livres sont désactivés. Comme le moteur utilise une WebView, éviter les EPUB non fiables ; les ressources externes éventuelles peuvent nécessiter un accès réseau.
+- La compatibilité et l’installation par-dessus doivent être vérifiées sur de vrais appareils, avec des EPUB représentatifs et sur plusieurs versions d’Android.
 
-## Feuille de route
-1. Tests instrumentés sur appareils et jeux d’EPUB réels, véritable table des matières EPUB 2/3, couvertures et meilleure restauration des positions.
-2. Signets, surlignage et notes, recherche dans le livre, personnalisation avancée et accessibilité.
-3. Synthèse vocale, collections, statistiques, dictionnaire et sauvegarde/synchronisation facultative.
-4. Étudier Readium pour une compatibilité EPUB 2/3, accessibilité et positions plus robustes ; les DRM exigent une intégration et des licences spécifiques.
+## Développement
+Flutter 3.47.9, JDK 17, Android SDK et `flutter pub get`. `flutter analyze` puis `flutter test`. La compilation de release nécessite les variables d’environnement de signature du workflow. Les dépendances sont verrouillées dans `pubspec.lock`.

@@ -1,12 +1,15 @@
-name: Générer l’APK Android
+name: Construire et publier l’APK Flutter
 on:
   push:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  apk:
+  android:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -14,21 +17,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
         with:
-          packages: platform-tools platforms;android-35 build-tools;35.0.0
-          log-accepted-android-sdk-licenses: false
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Vérifier les secrets de signature
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Dépendances et tests
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: Préparer la signature
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          test -n "$KEYSTORE_BASE64" && test -n "$KEYSTORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || { echo 'Secrets de signature manquants'; exit 1; }
+          test -n "$KEYSTORE_BASE64" || { echo 'Clé de signature manquante'; exit 1; }
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/epinal.p12"
       - name: Compiler l’APK signé
         env:
@@ -36,13 +39,18 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle --no-daemon assembleRelease
-      - name: Vérifier la signature
+        run: flutter build apk --release --build-name="1.0.${GITHUB_RUN_NUMBER}" --build-number="$GITHUB_RUN_NUMBER"
+      - name: Vérifier la signature et publier l’artefact
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)/apksigner" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          cp build/app/outputs/flutter-apk/app-release.apk Epinal.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Epinal-APK-signe
-          path: app/build/outputs/apk/release/app-release.apk
+          path: Epinal.apk
           if-no-files-found: error
           retention-days: 90
+      - name: Publier la version GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v1.0.${GITHUB_RUN_NUMBER}" Epinal.apk --title "Épinal 1.0.${GITHUB_RUN_NUMBER}" --notes "APK Android signé. Installez-le par-dessus votre version existante." --latest

@@ -6,7 +6,7 @@ import 'package:epinal_reader/page_flip_layer.dart';
 import 'package:epinal_reader/reading_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:page_curl_flip/page_curl_flip.dart';
+import 'package:epinal_reader/page_corner_painter.dart';
 
 void main() {
   test('animated book retains paginated left-to-right gestures', () {
@@ -48,7 +48,12 @@ void main() {
     await first;
     await tester.pump();
     expect(navigations, 1);
-    expect(find.byType(CurlOverlay), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter is PageCornerPainter,
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('reduced motion navigates without capturing', (tester) async {
@@ -130,7 +135,13 @@ void main() {
       // Image decoding uses the engine's asynchronous codec.
       for (
         var attempt = 0;
-        attempt < 20 && find.byType(CurlOverlay).evaluate().isEmpty;
+        attempt < 20 &&
+            find
+                .byWidgetPredicate(
+                  (w) => w is CustomPaint && w.painter is PageCornerPainter,
+                )
+                .evaluate()
+                .isEmpty;
         attempt++
       ) {
         await tester.runAsync(() async {
@@ -139,13 +150,23 @@ void main() {
         await tester.pump();
       }
       await tester.pump();
-      expect(find.byType(CurlOverlay), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is PageCornerPainter,
+        ),
+        findsOneWidget,
+      );
       expect(navigations, 1);
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pump(const Duration(milliseconds: 700));
       await tester.pump();
       await turn;
-      expect(find.byType(CurlOverlay), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is PageCornerPainter,
+        ),
+        findsNothing,
+      );
     });
   }
 }

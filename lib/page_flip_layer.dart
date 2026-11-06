@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:page_curl_flip/page_curl_flip.dart';
+import 'page_corner_painter.dart';
 
 typedef ViewportCapture = Future<Uint8List?> Function();
 
@@ -65,55 +65,25 @@ class PageFlipLayerState extends State<PageFlipLayer>
     super.dispose();
   }
 
-  Future<ui.Image> _decode(Uint8List bytes, bool mirror) async {
+  Future<ui.Image> _decode(Uint8List bytes) async {
     final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
     ui.ImageDescriptor? descriptor;
     ui.Codec? codec;
-    late final ui.Image original;
     try {
       descriptor = await ui.ImageDescriptor.encoded(buffer);
       final scale = math.min(
         1.0,
         1200 / math.max(descriptor.width, descriptor.height),
       );
-      final width = math.max(1, (descriptor.width * scale).round());
-      final height = math.max(1, (descriptor.height * scale).round());
       codec = await descriptor.instantiateCodec(
-        targetWidth: width,
-        targetHeight: height,
+        targetWidth: math.max(1, (descriptor.width * scale).round()),
+        targetHeight: math.max(1, (descriptor.height * scale).round()),
       );
-      original = (await codec.getNextFrame()).image;
+      return (await codec.getNextFrame()).image;
     } finally {
       codec?.dispose();
       descriptor?.dispose();
       buffer.dispose();
-    }
-    if (!mirror) return original;
-    final w = original.width;
-    final h = original.height;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    if (mirror) {
-      canvas.translate(w.toDouble(), 0);
-      canvas.scale(-1, 1);
-    }
-    canvas.drawImageRect(
-      original,
-      Rect.fromLTWH(
-        0,
-        0,
-        original.width.toDouble(),
-        original.height.toDouble(),
-      ),
-      Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
-      Paint()..filterQuality = FilterQuality.medium,
-    );
-    final picture = recorder.endRecording();
-    try {
-      return await picture.toImage(w, h);
-    } finally {
-      picture.dispose();
-      original.dispose();
     }
   }
 
@@ -146,9 +116,7 @@ class PageFlipLayerState extends State<PageFlipLayer>
         navigateOnce();
         return;
       }
-      // CurlOverlay peels left-to-right. Mirror both bitmap and surface for a
-      // forward page so the text remains readable, without reversing the page.
-      pending = await _decode(bytes, isForward);
+      pending = await _decode(bytes);
       if (!mounted || ticket != generation) return;
       setState(() {
         image = pending;
@@ -189,18 +157,15 @@ class PageFlipLayerState extends State<PageFlipLayer>
             child: AnimatedBuilder(
               animation: animation,
               builder: (context, _) {
-                Widget overlay = CurlOverlay(
-                  progress: Curves.easeInOut.transform(animation.value),
-                  pageImage: image,
-                  pageColor: widget.pageColor,
+                return CustomPaint(
+                  painter: PageCornerPainter(
+                    image: image!,
+                    pageColor: widget.pageColor,
+                    progress: Curves.easeInOut.transform(animation.value),
+                    forward: forward,
+                  ),
+                  child: const SizedBox.expand(),
                 );
-                if (forward)
-                  overlay = Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.diagonal3Values(-1, 1, 1),
-                    child: overlay,
-                  );
-                return overlay;
               },
             ),
           ),

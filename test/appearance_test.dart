@@ -21,6 +21,12 @@ void main() {
       final library = Library()..prefs = await SharedPreferences.getInstance();
       await tester.pumpWidget(Epinal(library: library));
       await tester.pump();
+      expect(
+        Theme.of(
+          tester.element(find.text('Votre bibliothèque')),
+        ).colorScheme.surface,
+        const Color(0xfff7f7f2),
+      );
       await tester.tap(find.byTooltip('Paramètres'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Apparence'));
@@ -29,6 +35,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(library.prefs.getString('app.appearance'), 'dark');
       expect(library.prefs.getInt('reader.theme'), 2);
+      expect(
+        Theme.of(tester.element(find.text('Paramètres'))).colorScheme.surface,
+        const Color(0xff151c18),
+      );
       expect(
         Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.dark,
@@ -39,6 +49,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(library.prefs.getString('app.appearance'), 'comfort');
       expect(library.prefs.getInt('reader.theme'), 3);
+      expect(
+        Theme.of(tester.element(find.text('Paramètres'))).colorScheme.surface,
+        const Color(0xffeee9d8),
+      );
       expect(
         Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.light,

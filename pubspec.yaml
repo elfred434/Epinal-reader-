@@ -9,7 +9,6 @@ dependencies:
     sdk: flutter
   flutter_epub_viewer:
     path: third_party/flutter_epub_viewer
-  page_curl_flip: 0.2.5
   epubx: 4.0.0
   image: ^3.3.0
   file_picker: ^10.3.10

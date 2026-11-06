@@ -468,7 +468,7 @@ class _ReaderState extends State<Reader> {
                       ),
                       selected: theme == i,
                       onSelected: (_) {
-                        theme = i;
+                        setState(() => theme = i);
                         store.prefs.setInt('reader.theme', i);
                         controller.updateTheme(theme: readingTheme());
                         refresh(() {});

@@ -4,6 +4,8 @@ import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'storage.dart';
 import 'reading_mode.dart';
+import 'reading_mode_picker.dart';
+import 'page_flip_layer.dart';
 import 'table_of_contents.dart';
 
 class Reader extends StatefulWidget {
@@ -17,6 +19,8 @@ class Reader extends StatefulWidget {
 class _ReaderState extends State<Reader> {
   final EpubController controller = EpubController();
   final FlutterTts tts = FlutterTts();
+  final GlobalKey<PageFlipLayerState> flipLayer =
+      GlobalKey<PageFlipLayerState>();
   List<EpubChapter> chapters = [];
   EpubTextSelection? selected;
   bool highlightsLoaded = false, speaking = false;
@@ -81,34 +85,8 @@ class _ReaderState extends State<Reader> {
     final chosen = await showModalBottomSheet<ReadingMode>(
       context: context,
       showDragHandle: true,
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              title: Text(
-                'Mode de lecture',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-            ),
-            for (final value in ReadingMode.values)
-              ListTile(
-                title: Text(value.label),
-                subtitle: Text(value.description),
-                leading: Icon(
-                  value == ReadingMode.longStrip
-                      ? Icons.view_stream_outlined
-                      : value == ReadingMode.vertical
-                      ? Icons.swap_vert
-                      : Icons.swap_horiz,
-                ),
-                trailing: value == readingMode ? const Icon(Icons.check) : null,
-                onTap: () => Navigator.pop(c, value),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (c) => ReadingModePicker(selected: readingMode),
     );
     if (chosen == null || chosen == readingMode || !mounted) return;
     await store.prefs.setString('reader.mode', chosen.name);
@@ -129,7 +107,8 @@ class _ReaderState extends State<Reader> {
     if (!directionApplied) {
       directionApplied = true;
       if (readingMode == ReadingMode.leftToRight ||
-          readingMode == ReadingMode.rightToLeft) {
+          readingMode == ReadingMode.rightToLeft ||
+          readingMode == ReadingMode.flipBook) {
         // EPUB.js otherwise prioritizes a book's page-progression metadata
         // over the chosen default direction. The method name is constant;
         // the value is always one of our two trusted enum values.
@@ -151,9 +130,40 @@ class _ReaderState extends State<Reader> {
     touchX = touchY = null; // also prevents duplicate callbacks turning twice
     if (startX == null || startY == null || selectingText) return;
     final turn = pageTurnForSwipe(readingMode, x - startX, y - startY);
-    if (turn == PageTurn.next) controller.next();
-    if (turn == PageTurn.previous) controller.prev();
+    if (turn != null) turnPage(turn);
   }
+
+  void turnPage(PageTurn turn) {
+    void navigate() {
+      if (turn == PageTurn.next) {
+        controller.next();
+      } else {
+        controller.prev();
+      }
+    }
+
+    if (readingMode != ReadingMode.flipBook) {
+      navigate();
+      return;
+    }
+    final layer = flipLayer.currentState;
+    if (layer == null) {
+      navigate();
+      return;
+    }
+    layer.turn(
+      isForward: turn == PageTurn.next,
+      capture: controller.captureViewport,
+      navigate: navigate,
+    );
+  }
+
+  Color get pageBackground => switch (theme) {
+    1 => const Color(0xfff4ecd9),
+    2 => const Color(0xff121212),
+    3 => const Color(0xffe9e4ce),
+    _ => Colors.white,
+  };
 
   Future<void> bookmark() async {
     final cfi = book.cfi;
@@ -573,47 +583,52 @@ class _ReaderState extends State<Reader> {
       child: Column(
         children: [
           Expanded(
-            child: EpubViewer(
-              key: ValueKey(readingMode.name),
-              epubController: controller,
-              epubSource: EpubSource.fromFile(store.file(book)),
-              initialCfi: initialCfi,
-              initialLocations: store.prefs.getString('locations.${book.id}'),
-              displaySettings: EpubDisplaySettings(
-                fontSize: font,
-                flow: readingMode.flow,
-                manager: EpubManager.continuous,
-                spread: EpubSpread.none,
-                defaultDirection: readingMode.direction,
-                // Disable the plugin's Android-only horizontal gesture handler:
-                // it otherwise prevents vertical dragging, even in scrolled mode.
-                snap: false,
-                useSnapAnimationAndroid: true,
-                theme: readingTheme(),
-                allowScriptedContent: false,
+            child: PageFlipLayer(
+              key: flipLayer,
+              enabled: readingMode == ReadingMode.flipBook,
+              pageColor: pageBackground,
+              child: EpubViewer(
+                key: ValueKey(readingMode.name),
+                epubController: controller,
+                epubSource: EpubSource.fromFile(store.file(book)),
+                initialCfi: initialCfi,
+                initialLocations: store.prefs.getString('locations.${book.id}'),
+                displaySettings: EpubDisplaySettings(
+                  fontSize: font,
+                  flow: readingMode.flow,
+                  manager: EpubManager.continuous,
+                  spread: EpubSpread.none,
+                  defaultDirection: readingMode.direction,
+                  // Disable the plugin's Android-only horizontal gesture handler:
+                  // it otherwise prevents vertical dragging, even in scrolled mode.
+                  snap: false,
+                  useSnapAnimationAndroid: true,
+                  theme: readingTheme(),
+                  allowScriptedContent: false,
+                ),
+                onChaptersLoaded: (v) {
+                  if (mounted) setState(() => chapters = v);
+                },
+                onEpubLoaded: onViewerLoaded,
+                onTouchDown: onTouchStart,
+                onTouchUp: onTouchEnd,
+                onTextSelected: (v) {
+                  selectingText = true;
+                  selected = v;
+                },
+                onSelectionChanging: () => selectingText = true,
+                onDeselection: () => selectingText = false,
+                onLocationsGenerated: (v) =>
+                    store.prefs.setString('locations.${book.id}', v),
+                onRelocated: (v) {
+                  book.cfi = v.startCfi;
+                  book.progress = v.progress.clamp(0, 1);
+                  store.save();
+                  if (mounted) setState(() {});
+                },
+                onLoadError: (e) =>
+                    message('Impossible de lire cet EPUB : ${e.message}'),
               ),
-              onChaptersLoaded: (v) {
-                if (mounted) setState(() => chapters = v);
-              },
-              onEpubLoaded: onViewerLoaded,
-              onTouchDown: onTouchStart,
-              onTouchUp: onTouchEnd,
-              onTextSelected: (v) {
-                selectingText = true;
-                selected = v;
-              },
-              onSelectionChanging: () => selectingText = true,
-              onDeselection: () => selectingText = false,
-              onLocationsGenerated: (v) =>
-                  store.prefs.setString('locations.${book.id}', v),
-              onRelocated: (v) {
-                book.cfi = v.startCfi;
-                book.progress = v.progress.clamp(0, 1);
-                store.save();
-                if (mounted) setState(() {});
-              },
-              onLoadError: (e) =>
-                  message('Impossible de lire cet EPUB : ${e.message}'),
             ),
           ),
           Container(
@@ -625,9 +640,11 @@ class _ReaderState extends State<Reader> {
                   tooltip: readingMode == ReadingMode.rightToLeft
                       ? 'Page suivante'
                       : 'Page précédente',
-                  onPressed: readingMode == ReadingMode.rightToLeft
-                      ? controller.next
-                      : controller.prev,
+                  onPressed: () => turnPage(
+                    readingMode == ReadingMode.rightToLeft
+                        ? PageTurn.next
+                        : PageTurn.previous,
+                  ),
                   icon: Icon(
                     readingMode == ReadingMode.vertical ||
                             readingMode.isContinuous
@@ -650,9 +667,11 @@ class _ReaderState extends State<Reader> {
                   tooltip: readingMode == ReadingMode.rightToLeft
                       ? 'Page précédente'
                       : 'Page suivante',
-                  onPressed: readingMode == ReadingMode.rightToLeft
-                      ? controller.prev
-                      : controller.next,
+                  onPressed: () => turnPage(
+                    readingMode == ReadingMode.rightToLeft
+                        ? PageTurn.previous
+                        : PageTurn.next,
+                  ),
                   icon: Icon(
                     readingMode == ReadingMode.vertical ||
                             readingMode.isContinuous

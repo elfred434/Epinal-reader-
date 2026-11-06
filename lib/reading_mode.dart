@@ -11,7 +11,8 @@ enum ReadingMode {
     'Pages horizontales : glisser vers la droite pour avancer.',
   ),
   vertical('Vertical', 'Page par page : glisser vers le haut pour avancer.'),
-  longStrip('Long strip', 'Défilement vertical continu entre les chapitres.');
+  longStrip('Long strip', 'Défilement vertical continu entre les chapitres.'),
+  flipBook('Livre animé', 'Tournez les pages avec un effet de livre.');
 
   const ReadingMode(this.label, this.description);
   final String label;

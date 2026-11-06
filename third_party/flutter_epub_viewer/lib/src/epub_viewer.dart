@@ -598,6 +598,8 @@ class _EpubViewerState extends State<EpubViewer> {
         defaultTargetPlatform == TargetPlatform.android &&
         !displaySettings.useSnapAnimationAndroid;
 
+    final decoration = widget.displaySettings?.theme?.backgroundDecoration;
+    final String? backgroundColor = decoration is BoxDecoration ? decoration.color?.toHex() : null;
     final String? foregroundColor = widget
         .displaySettings
         ?.theme
@@ -630,7 +632,7 @@ class _EpubViewerState extends State<EpubViewer> {
         'allowScriptedContent': allowScripted,
         'direction': direction,
         'useCustomSwipe': useCustomSwipe,
-        'backgroundColor': null,
+        'backgroundColor': backgroundColor,
         'foregroundColor': foregroundColor,
         'fontSize': fontSize,
         'clearSelectionOnPageChange': clearSelectionOnPageChange,

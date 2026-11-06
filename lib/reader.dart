@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'storage.dart';
+import 'palette.dart';
 import 'reading_mode.dart';
 import 'reading_mode_picker.dart';
 import 'page_flip_layer.dart';
@@ -50,23 +51,7 @@ class _ReaderState extends State<Reader> {
     super.dispose();
   }
 
-  EpubTheme readingTheme() => theme == 2
-      ? EpubTheme.dark()
-      : theme == 3
-      ? EpubTheme.custom(
-          backgroundDecoration: const BoxDecoration(color: Color(0xffe9e4ce)),
-          foregroundColor: const Color(0xff343a2e),
-          customCss: {
-            'body': {'line-height': '1.7'},
-            'p': {'line-height': '1.7'},
-          },
-        )
-      : theme == 1
-      ? EpubTheme.custom(
-          backgroundDecoration: const BoxDecoration(color: Color(0xfff4ecd9)),
-          foregroundColor: const Color(0xff43372a),
-        )
-      : EpubTheme.light();
+  EpubTheme readingTheme() => EpinalPalette.epubTheme(theme);
   void message(String text) {
     if (mounted)
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -77,7 +62,8 @@ class _ReaderState extends State<Reader> {
     highlightsLoaded = true;
     for (final item in store.entries('highlights', book)) {
       final cfi = item['cfi'] as String?;
-      if (cfi != null) controller.addHighlight(cfi: cfi, color: Colors.amber);
+      if (cfi != null)
+        controller.addHighlight(cfi: cfi, color: EpinalPalette.highlightAmber);
     }
   }
 
@@ -158,12 +144,7 @@ class _ReaderState extends State<Reader> {
     );
   }
 
-  Color get pageBackground => switch (theme) {
-    1 => const Color(0xfff4ecd9),
-    2 => const Color(0xff121212),
-    3 => const Color(0xffe9e4ce),
-    _ => Colors.white,
-  };
+  Color get pageBackground => EpinalPalette.readingPaper(theme);
 
   Future<void> bookmark() async {
     final cfi = book.cfi;
@@ -257,7 +238,10 @@ class _ReaderState extends State<Reader> {
         'note': note,
       });
       await store.putEntries('highlights', book, list);
-      controller.addHighlight(cfi: selection.selectionCfi, color: Colors.amber);
+      controller.addHighlight(
+        cfi: selection.selectionCfi,
+        color: EpinalPalette.highlightAmber,
+      );
       controller.clearSelection();
       selected = null;
       message('Passage enregistré.');
@@ -468,7 +452,7 @@ class _ReaderState extends State<Reader> {
                       ),
                       selected: theme == i,
                       onSelected: (_) {
-                        theme = i;
+                        setState(() => theme = i);
                         store.prefs.setInt('reader.theme', i);
                         controller.updateTheme(theme: readingTheme());
                         refresh(() {});

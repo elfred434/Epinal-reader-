@@ -1658,8 +1658,8 @@ function loadBook(data, opts) {
     }
   });
   rendition.themes.fontSize(fontSize + "px");
-  //set background and foreground color
-  updateTheme(backgroundColor, foregroundColor);
+  // Reapply all theme rules after rendering, including custom line spacing.
+  updateTheme(backgroundColor, foregroundColor, customCss);
 }
 
 window.addEventListener("flutterInAppWebViewPlatformReady", function (event) {
@@ -2448,6 +2448,11 @@ function updateTheme(backgroundColor, foregroundColor, customCss) {
   // Only include properties that are provided and not empty
   if (backgroundColor && backgroundColor !== "" && backgroundColor !== "null") {
     themeObj["background"] = backgroundColor;
+    // Match the host canvas and the EPUB page, including between chapters.
+    document.documentElement.style.backgroundColor = backgroundColor;
+    document.body.style.backgroundColor = backgroundColor;
+    var viewer = document.getElementById("viewer");
+    if (viewer) viewer.style.backgroundColor = backgroundColor;
   }
   if (foregroundColor && foregroundColor !== "" && foregroundColor !== "null") {
     themeObj["color"] = foregroundColor;
@@ -2459,7 +2464,14 @@ function updateTheme(backgroundColor, foregroundColor, customCss) {
 
   // Merge custom CSS
   if (customCss && customCss !== "null" && typeof customCss === 'object') {
-    Object.assign(rules, customCss);
+    Object.keys(customCss).forEach(function (selector) {
+      var value = customCss[selector];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        rules[selector] = Object.assign({}, rules[selector] || {}, value);
+      } else {
+        rules[selector] = value;
+      }
+    });
   }
 
   // Update theme if there are rules

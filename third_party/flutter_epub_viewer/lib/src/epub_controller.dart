@@ -166,9 +166,11 @@ class EpubController {
   }
 
   Future<void> updateTheme({required EpubTheme theme}) async {
+    final decoration = theme.backgroundDecoration;
+    final backgroundColor = decoration is BoxDecoration ? decoration.color?.toHex() : null;
     String? foregroundColor = theme.foregroundColor?.toHex();
     await webViewController?.callMethod('updateTheme', [
-      '',
+      backgroundColor,
       foregroundColor,
       theme.customCss,
     ]);

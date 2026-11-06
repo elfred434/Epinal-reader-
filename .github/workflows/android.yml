@@ -27,6 +27,7 @@ jobs:
           flutter pub get
           flutter analyze
           flutter test
+          node test/epub_theme_test.js
       - name: Préparer la signature
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

@@ -1,0 +1,28 @@
+// Exercise the bundled EPUB theme bridge without running an Android WebView.
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+const source = fs.readFileSync('third_party/flutter_epub_viewer/lib/assets/webpage/html/epubView.js', 'utf8');
+assert.equal((source.match(/updateTheme\(backgroundColor, foregroundColor, customCss\);/g) || []).length, 2, 'initial and final theme passes retain custom CSS');
+const start = source.indexOf('function updateTheme(backgroundColor, foregroundColor, customCss) {');
+const end = source.indexOf('// Block or unblock gestures', start);
+assert(start >= 0 && end > start);
+let registered;
+let selected;
+const viewer = {style: {}};
+const document = {documentElement: {style: {}}, body: {style: {}}, getElementById: () => viewer};
+const rendition = {themes: {register: (name, rules) => { registered = rules; }, select: name => { selected = name; }}};
+const context = {document, rendition};
+vm.runInNewContext(source.slice(start, end), context);
+context.updateTheme('#fbf7ee', '#2d241e', {'body': {'line-height': '1.7'}, 'p': {'line-height': '1.7'}});
+assert.equal(document.documentElement.style.backgroundColor, '#fbf7ee');
+assert.equal(viewer.style.backgroundColor, '#fbf7ee');
+assert.equal(registered.body.background, '#fbf7ee');
+assert.equal(registered.body.color, '#2d241e');
+assert.equal(registered.body['line-height'], '1.7');
+assert.equal(registered.p['line-height'], '1.7');
+assert.equal(selected, 'user-theme');
+context.updateTheme('#141619', '#d8d4cf', null);
+assert.equal(registered.body.background, '#141619');
+assert.equal(registered.body.color, '#d8d4cf');
+console.log('EPUB paper, ink and custom CSS merge: OK');

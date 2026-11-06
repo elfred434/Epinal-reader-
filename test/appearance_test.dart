@@ -1,5 +1,4 @@
 import 'package:epinal_reader/main.dart';
-import 'package:epinal_reader/palette.dart';
 import 'package:epinal_reader/storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,10 +30,6 @@ void main() {
       expect(library.prefs.getString('app.appearance'), 'dark');
       expect(library.prefs.getInt('reader.theme'), 2);
       expect(
-        Theme.of(tester.element(find.text('Paramètres'))).colorScheme.surface,
-        EpinalPalette.night,
-      );
-      expect(
         Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.dark,
       );
@@ -44,10 +39,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(library.prefs.getString('app.appearance'), 'comfort');
       expect(library.prefs.getInt('reader.theme'), 3);
-      expect(
-        Theme.of(tester.element(find.text('Paramètres'))).colorScheme.surface,
-        EpinalPalette.sepia,
-      );
       expect(
         Theme.of(tester.element(find.text('Paramètres'))).brightness,
         Brightness.light,

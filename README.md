@@ -52,6 +52,3 @@ Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Le
 
 ## Icône
 L’illustration source est dans `assets/branding/epinal-icon.png`. Les ressources Android comprennent une icône classique et ronde pour les appareils anciens, ainsi qu’une icône adaptative pour Android 8 et versions ultérieures, déclinées aux cinq densités Android.
-
-## Palette Épinal
-La palette est issue de `DESIGN.md` : accents garance et outremer, progression dorée, papiers vélin et sépia, et nuit douce. Les préférences d’apparence et de lecture existantes sont conservées ; **Sépia** et **Confort visuel** partagent les couleurs parchemin, avec un interligne accru pour le confort. Les couleurs de certains EPUB à mise en page imposée peuvent différer.

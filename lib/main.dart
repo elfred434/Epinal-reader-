@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'reader.dart';
-import 'palette.dart';
 import 'categories.dart';
 import 'storage.dart';
 import 'settings_page.dart';
@@ -47,7 +46,17 @@ class _EpinalState extends State<Epinal> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = EpinalPalette.scheme(mode);
+    final dark = mode == 'dark';
+    final comfort = mode == 'comfort';
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xff526d55),
+      brightness: dark ? Brightness.dark : Brightness.light,
+      surface: dark
+          ? const Color(0xff151c18)
+          : comfort
+          ? const Color(0xffeee9d8)
+          : const Color(0xfff7f7f2),
+    );
     return MaterialApp(
       title: 'Épinal',
       debugShowCheckedModeBanner: false,
@@ -55,31 +64,6 @@ class _EpinalState extends State<Epinal> {
         colorScheme: scheme,
         scaffoldBackgroundColor: scheme.surface,
         useMaterial3: true,
-        sliderTheme: const SliderThemeData(
-          activeTrackColor: EpinalPalette.gold,
-          thumbColor: EpinalPalette.gold,
-        ),
-        progressIndicatorTheme: const ProgressIndicatorThemeData(
-          color: EpinalPalette.gold,
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: ButtonStyle(
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.disabled)
-                  ? scheme.onSurface.withValues(alpha: .12)
-                  : mode == 'dark'
-                  ? scheme.primary
-                  : EpinalPalette.garance,
-            ),
-            foregroundColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.disabled)
-                  ? scheme.onSurface.withValues(alpha: .38)
-                  : mode == 'dark'
-                  ? scheme.onPrimary
-                  : Colors.white,
-            ),
-          ),
-        ),
       ),
       home: Shelf(
         library: widget.library,
@@ -347,7 +331,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     Widget fallback() => Container(
       width: width,
       height: height,
-      color: EpinalPalette.outremer,
+      color: const Color(0xff526d55),
       child: const Icon(
         Icons.menu_book_rounded,
         color: Colors.white70,
@@ -568,9 +552,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
           children: [
             Container(
               width: double.infinity,
-              color: scheme.brightness == Brightness.dark
-                  ? EpinalPalette.nightCard
-                  : EpinalPalette.outremer,
+              color: const Color(0xff1d2b22),
               padding: const EdgeInsets.fromLTRB(20, 12, 14, 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -581,7 +563,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                         child: Text(
                           'ÉPINAL  /  LECTEUR EPUB',
                           style: TextStyle(
-                            color: Color(0xffd5e3ff),
+                            color: Color(0xffb2c8ad),
                             fontSize: 11,
                             letterSpacing: 1.8,
                             fontWeight: FontWeight.bold,

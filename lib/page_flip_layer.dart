@@ -28,10 +28,10 @@ class PageFlipLayerState extends State<PageFlipLayer>
     with SingleTickerProviderStateMixin {
   late final AnimationController animation = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 650),
+    duration: const Duration(milliseconds: 900),
   );
   ui.Image? image;
-  bool forward = true, busy = false;
+  bool forward = true, fromTop = false, busy = false;
   int generation = 0;
 
   @override
@@ -91,6 +91,7 @@ class PageFlipLayerState extends State<PageFlipLayer>
   /// navigation. Repeated requests are ignored until the animation completes.
   Future<void> turn({
     required bool isForward,
+    bool fromTopCorner = false,
     required ViewportCapture capture,
     required VoidCallback navigate,
   }) async {
@@ -122,6 +123,7 @@ class PageFlipLayerState extends State<PageFlipLayer>
         image = pending;
         pending = null;
         forward = isForward;
+        fromTop = fromTopCorner;
         animation.value = 0;
       });
       await SchedulerBinding.instance.endOfFrame;
@@ -163,6 +165,7 @@ class PageFlipLayerState extends State<PageFlipLayer>
                     pageColor: widget.pageColor,
                     progress: Curves.easeInOut.transform(animation.value),
                     forward: forward,
+                    fromTop: fromTop,
                   ),
                   child: const SizedBox.expand(),
                 );

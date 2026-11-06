@@ -41,7 +41,7 @@ Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conserv
 - **Right to Left** : pages horizontales, glisser à droite pour avancer.
 - **Vertical** : pages successives, glisser vers le haut pour avancer.
 - **Long strip** : défilement vertical libre et continu.
-- **Livre animé** : pages horizontales avec un coin qui se replie de droite à gauche pour avancer et de gauche à droite pour revenir, en glissant ou avec les flèches. L’animation démarre après le geste ; elle ne suit pas le doigt. Les captures temporaires restent en mémoire et ne sont ni enregistrées ni envoyées. Si la capture est indisponible ou si les animations sont désactivées, le changement de page reste instantané.
+- **Livre animé** : pages horizontales avec un pli de papier et son ombre inspirés de Folio : de droite à gauche pour avancer et de gauche à droite pour revenir, en glissant ou avec les flèches. Le coin supérieur ou inférieur dépend de la hauteur du geste. Contrairement à Folio, cette adaptation EPUB déclenche l’animation après le geste ; la page ne suit pas le doigt. Les captures temporaires restent en mémoire et ne sont ni enregistrées ni envoyées. Si la capture est indisponible ou si les animations sont désactivées, le changement de page reste instantané.
 
 Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Les gestes et la mise en page peuvent varier selon l’EPUB ; les modes doivent être vérifiés sur appareil, en particulier pour les livres à mise en page fixe et en écriture verticale.
 

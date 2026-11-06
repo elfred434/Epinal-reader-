@@ -129,6 +129,7 @@ void main() {
       var navigations = 0;
       final turn = key.currentState!.turn(
         isForward: isForward,
+        fromTopCorner: isForward,
         capture: () async => png,
         navigate: () => navigations++,
       );
@@ -157,8 +158,15 @@ void main() {
         findsOneWidget,
       );
       expect(navigations, 1);
+      final paint = tester.widget<CustomPaint>(
+        find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is PageCornerPainter,
+        ),
+      );
+      expect((paint.painter! as PageCornerPainter).forward, isForward);
+      expect((paint.painter! as PageCornerPainter).fromTop, isForward);
       await tester.pump(const Duration(milliseconds: 200));
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(milliseconds: 950));
       await tester.pump();
       await turn;
       expect(

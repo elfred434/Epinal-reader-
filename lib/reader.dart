@@ -130,10 +130,10 @@ class _ReaderState extends State<Reader> {
     touchX = touchY = null; // also prevents duplicate callbacks turning twice
     if (startX == null || startY == null || selectingText) return;
     final turn = pageTurnForSwipe(readingMode, x - startX, y - startY);
-    if (turn != null) turnPage(turn);
+    if (turn != null) turnPage(turn, fromTop: startY < .5);
   }
 
-  void turnPage(PageTurn turn) {
+  void turnPage(PageTurn turn, {bool fromTop = false}) {
     void navigate() {
       if (turn == PageTurn.next) {
         controller.next();
@@ -153,6 +153,7 @@ class _ReaderState extends State<Reader> {
     }
     layer.turn(
       isForward: turn == PageTurn.next,
+      fromTopCorner: fromTop,
       capture: controller.captureViewport,
       navigate: navigate,
     );

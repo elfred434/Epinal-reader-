@@ -29,6 +29,16 @@ void main() {
       expect(finish.contains(const Offset(90, 50)), isFalse);
     },
   );
+  test('top corners fold in the same respective directions', () {
+    const size = Size(100, 100);
+    final next = remainingPagePath(size, .2, forward: true, fromTop: true);
+    final previous = remainingPagePath(size, .2, forward: false, fromTop: true);
+    expect(next.contains(const Offset(99, 1)), isFalse);
+    expect(next.contains(const Offset(99, 99)), isTrue);
+    expect(previous.contains(const Offset(1, 1)), isFalse);
+    expect(previous.contains(const Offset(1, 99)), isTrue);
+  });
+
   testWidgets(
     'rendered corner reveals correct side without mirroring page content',
     (tester) async {

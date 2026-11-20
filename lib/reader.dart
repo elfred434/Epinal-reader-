@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'storage.dart';
 import 'reading_mode.dart';
 import 'reading_mode_picker.dart';
+import 'reader_actions.dart';
 import 'page_flip_layer.dart';
 import 'table_of_contents.dart';
 
@@ -27,7 +29,7 @@ class _ReaderState extends State<Reader> {
   late int font;
   late int theme;
   late ReadingMode readingMode;
-  bool directionApplied = false, selectingText = false;
+  bool directionApplied = false, selectingText = false, viewerReady = false;
   double? touchX, touchY;
   late String? initialCfi;
   Library get store => widget.library;
@@ -97,6 +99,7 @@ class _ReaderState extends State<Reader> {
       initialCfi = book.cfi;
       readingMode = chosen;
       directionApplied = false;
+      viewerReady = false;
       highlightsLoaded = false;
       selectingText = false;
       touchX = touchY = null;
@@ -104,6 +107,7 @@ class _ReaderState extends State<Reader> {
   }
 
   void onViewerLoaded() {
+    if (mounted && !viewerReady) setState(() => viewerReady = true);
     if (!directionApplied) {
       directionApplied = true;
       if (readingMode == ReadingMode.leftToRight ||
@@ -343,152 +347,222 @@ class _ReaderState extends State<Reader> {
   Future<void> search() async {
     final input = TextEditingController();
     List<EpubSearchResult> results = [];
-    bool loading = false, searched = false;
-    await showModalBottomSheet(
+    bool loading = false, searched = false, failed = false;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (c) => StatefulBuilder(
-        builder: (c, refresh) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(c).bottom),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(c).height * .65,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: input,
-                          autofocus: true,
-                          decoration: const InputDecoration(
-                            hintText: 'Rechercher dans le livre',
+        builder: (c, refresh) {
+          Future<void> runSearch() async {
+            final query = input.text.trim();
+            if (loading || query.isEmpty) return;
+            refresh(() {
+              loading = true;
+              searched = true;
+              failed = false;
+            });
+            try {
+              results = await controller.search(query: query);
+            } catch (_) {
+              results = [];
+              failed = true;
+            }
+            if (c.mounted) refresh(() => loading = false);
+          }
+
+          final screen = MediaQuery.sizeOf(c).height;
+          final keyboard = MediaQuery.viewInsetsOf(c).bottom;
+          final height = math.max(
+            100.0,
+            math.min(screen * .7, screen - keyboard - 60),
+          );
+          return Padding(
+            padding: EdgeInsets.only(bottom: keyboard),
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                height: height,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: input,
+                              autofocus: true,
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: (_) => runSearch(),
+                              decoration: const InputDecoration(
+                                labelText: 'Rechercher dans le livre',
+                                hintText: 'Mot ou phrase',
+                                prefixIcon: Icon(Icons.search),
+                              ),
+                            ),
                           ),
-                        ),
+                          IconButton(
+                            tooltip: 'Lancer la recherche',
+                            icon: const Icon(Icons.arrow_forward),
+                            onPressed: loading ? null : runSearch,
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.search),
-                        onPressed: () async {
-                          refresh(() {
-                            loading = true;
-                            searched = true;
-                          });
-                          try {
-                            results = await controller.search(
-                              query: input.text.trim(),
-                            );
-                          } catch (_) {
-                            results = [];
-                          }
-                          if (c.mounted) refresh(() => loading = false);
-                        },
-                      ),
-                    ],
-                  ),
+                    ),
+                    if (loading) const LinearProgressIndicator(),
+                    Expanded(
+                      child: results.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Text(
+                                  failed
+                                      ? 'Recherche indisponible. Réessayez.'
+                                      : searched && !loading
+                                      ? 'Aucun résultat.'
+                                      : 'Saisissez un mot ou une phrase.',
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: results.length,
+                              itemBuilder: (_, i) => ListTile(
+                                title: Text(results[i].excerpt),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  Navigator.pop(c);
+                                  controller.display(cfi: results[i].cfi);
+                                },
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-                if (loading) const LinearProgressIndicator(),
-                Expanded(
-                  child: results.isEmpty
-                      ? Center(
-                          child: Text(
-                            searched && !loading
-                                ? 'Aucun résultat.'
-                                : 'Saisissez un mot ou une phrase.',
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: results.length,
-                          itemBuilder: (_, i) => ListTile(
-                            title: Text(results[i].excerpt),
-                            onTap: () {
-                              Navigator.pop(c);
-                              controller.display(cfi: results[i].cfi);
-                            },
-                          ),
-                        ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
+    input.dispose();
+  }
+
+  Future<void> showReaderActions() async {
+    final action = await showModalBottomSheet<ReaderAction>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) =>
+          ReaderActionsSheet(speaking: speaking, modeLabel: readingMode.label),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case ReaderAction.search:
+        search();
+      case ReaderAction.marks:
+        savedSheet('marks');
+      case ReaderAction.addMark:
+        bookmark();
+      case ReaderAction.selection:
+        selectedActions();
+      case ReaderAction.highlights:
+        savedSheet('highlights');
+      case ReaderAction.mode:
+        selectReadingMode();
+      case ReaderAction.settings:
+        options();
+      case ReaderAction.speak:
+        speakPage();
+    }
   }
 
   void options() {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (c) => StatefulBuilder(
         builder: (c, refresh) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Confort de lecture',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Row(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(c).height * .8,
+            ),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Taille du texte'),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () {
-                        font = (font - 2).clamp(12, 36);
-                        controller.setFontSize(fontSize: font.toDouble());
-                        store.prefs.setInt('reader.font', font);
-                        refresh(() {});
-                      },
-                      icon: const Icon(Icons.remove_circle_outline),
+                    const Text(
+                      'Confort de lecture',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    Text('$font'),
-                    IconButton(
-                      onPressed: () {
-                        font = (font + 2).clamp(12, 36);
-                        controller.setFontSize(fontSize: font.toDouble());
-                        store.prefs.setInt('reader.font', font);
-                        refresh(() {});
+                    const SizedBox(height: 12),
+                    const Text('Taille du texte'),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Diminuer la taille du texte',
+                          onPressed: () {
+                            font = (font - 2).clamp(12, 36);
+                            controller.setFontSize(fontSize: font.toDouble());
+                            store.prefs.setInt('reader.font', font);
+                            refresh(() {});
+                          },
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text('$font'),
+                        IconButton(
+                          tooltip: 'Augmenter la taille du texte',
+                          onPressed: () {
+                            font = (font + 2).clamp(12, 36);
+                            controller.setFontSize(fontSize: font.toDouble());
+                            store.prefs.setInt('reader.font', font);
+                            refresh(() {});
+                          },
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: List.generate(
+                        4,
+                        (i) => ChoiceChip(
+                          label: Text(
+                            ['Clair', 'Sépia', 'Sombre', 'Confort visuel'][i],
+                          ),
+                          selected: theme == i,
+                          onSelected: (_) {
+                            setState(() => theme = i);
+                            store.prefs.setInt('reader.theme', i);
+                            controller.updateTheme(theme: readingTheme());
+                            refresh(() {});
+                          },
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.view_carousel_outlined),
+                      title: const Text('Mode de lecture'),
+                      subtitle: Text(readingMode.label),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.pop(c);
+                        selectReadingMode();
                       },
-                      icon: const Icon(Icons.add_circle_outline),
                     ),
                   ],
                 ),
-                Wrap(
-                  spacing: 8,
-                  children: List.generate(
-                    4,
-                    (i) => ChoiceChip(
-                      label: Text(
-                        ['Clair', 'Sépia', 'Sombre', 'Confort visuel'][i],
-                      ),
-                      selected: theme == i,
-                      onSelected: (_) {
-                        setState(() => theme = i);
-                        store.prefs.setInt('reader.theme', i);
-                        controller.updateTheme(theme: readingTheme());
-                        refresh(() {});
-                      },
-                    ),
-                  ),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.view_carousel_outlined),
-                  title: const Text('Mode de lecture'),
-                  subtitle: Text(readingMode.label),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pop(c);
-                    selectReadingMode();
-                  },
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -526,57 +600,17 @@ class _ReaderState extends State<Reader> {
         IconButton(
           tooltip: 'Sommaire',
           onPressed: chapterSheet,
-          icon: const Icon(Icons.list),
+          icon: const Icon(Icons.list_alt_outlined),
         ),
         IconButton(
-          tooltip: 'Recherche',
-          onPressed: search,
-          icon: const Icon(Icons.search),
+          tooltip: 'Confort de lecture',
+          onPressed: viewerReady ? options : null,
+          icon: const Icon(Icons.text_fields),
         ),
-        PopupMenuButton<String>(
-          onSelected: (v) {
-            switch (v) {
-              case 'add':
-                bookmark();
-              case 'marks':
-                savedSheet('marks');
-              case 'highlights':
-                savedSheet('highlights');
-              case 'select':
-                selectedActions();
-              case 'mode':
-                selectReadingMode();
-              case 'settings':
-                options();
-              case 'speak':
-                speakPage();
-            }
-          },
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'add', child: Text('Ajouter un signet')),
-            const PopupMenuItem(value: 'marks', child: Text('Mes signets')),
-            const PopupMenuItem(
-              value: 'select',
-              child: Text('Surligner la sélection'),
-            ),
-            const PopupMenuItem(
-              value: 'highlights',
-              child: Text('Passages et notes'),
-            ),
-            const PopupMenuItem(value: 'mode', child: Text('Mode de lecture')),
-            const PopupMenuItem(
-              value: 'settings',
-              child: Text('Confort de lecture'),
-            ),
-            PopupMenuItem(
-              value: 'speak',
-              child: Text(
-                speaking
-                    ? 'Arrêter la lecture vocale'
-                    : 'Lire cette page à voix haute',
-              ),
-            ),
-          ],
+        IconButton(
+          tooltip: 'Outils de lecture',
+          onPressed: viewerReady ? showReaderActions : null,
+          icon: const Icon(Icons.more_horiz),
         ),
       ],
     ),
@@ -632,6 +666,13 @@ class _ReaderState extends State<Reader> {
               ),
             ),
           ),
+          if (!viewerReady) const LinearProgressIndicator(minHeight: 2),
+          if (viewerReady)
+            LinearProgressIndicator(
+              value: book.progress.clamp(0, 1),
+              minHeight: 2,
+              semanticsLabel: 'Progression dans le livre',
+            ),
           Container(
             color: Theme.of(context).colorScheme.surface,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -641,11 +682,13 @@ class _ReaderState extends State<Reader> {
                   tooltip: readingMode == ReadingMode.rightToLeft
                       ? 'Page suivante'
                       : 'Page précédente',
-                  onPressed: () => turnPage(
-                    readingMode == ReadingMode.rightToLeft
-                        ? PageTurn.next
-                        : PageTurn.previous,
-                  ),
+                  onPressed: viewerReady
+                      ? () => turnPage(
+                          readingMode == ReadingMode.rightToLeft
+                              ? PageTurn.next
+                              : PageTurn.previous,
+                        )
+                      : null,
                   icon: Icon(
                     readingMode == ReadingMode.vertical ||
                             readingMode.isContinuous
@@ -655,24 +698,28 @@ class _ReaderState extends State<Reader> {
                 ),
                 Expanded(
                   child: Text(
-                    '${(book.progress * 100).round()} %',
+                    'Progression · ${(book.progress * 100).round()} %',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                   ),
                 ),
                 IconButton(
                   tooltip: 'Ajouter un signet',
-                  onPressed: bookmark,
+                  onPressed: viewerReady ? bookmark : null,
                   icon: const Icon(Icons.bookmark_add_outlined),
                 ),
                 IconButton(
                   tooltip: readingMode == ReadingMode.rightToLeft
                       ? 'Page précédente'
                       : 'Page suivante',
-                  onPressed: () => turnPage(
-                    readingMode == ReadingMode.rightToLeft
-                        ? PageTurn.previous
-                        : PageTurn.next,
-                  ),
+                  onPressed: viewerReady
+                      ? () => turnPage(
+                          readingMode == ReadingMode.rightToLeft
+                              ? PageTurn.previous
+                              : PageTurn.next,
+                        )
+                      : null,
                   icon: Icon(
                     readingMode == ReadingMode.vertical ||
                             readingMode.isContinuous

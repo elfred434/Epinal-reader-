@@ -131,10 +131,10 @@ void main() {
     library.books = [Book(id: '1', title: 'Roman', author: 'Auteur')];
     await tester.pumpWidget(Epinal(library: library));
     await tester.pumpAndSettle();
-    expect(find.byType(GridView), findsNothing);
+    expect(find.byType(SliverGrid), findsNothing);
     await tester.tap(find.byTooltip('Vue cartes'));
     await tester.pumpAndSettle();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(SliverGrid), findsOneWidget);
     expect(library.prefs.getBool('library.grid'), isTrue);
     await tester.tap(find.byTooltip('Options du livre'));
     await tester.pumpAndSettle();
@@ -150,7 +150,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(Epinal(library: library));
     await tester.pumpAndSettle();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(SliverGrid), findsOneWidget);
   });
   testWidgets('bibliothèque en cartes adaptée à un petit écran', (
     tester,
@@ -177,7 +177,60 @@ void main() {
     ];
     await tester.pumpWidget(Epinal(library: library));
     await tester.pumpAndSettle();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(SliverGrid), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'recherche, filtre et reprise restent compréhensibles sur petit écran',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({
+        'library.lastOpened': '1',
+        'library.grid': true,
+      });
+      PackageInfo.setMockInitialValues(
+        appName: 'Épinal',
+        packageName: 'com.epinal.reader',
+        version: '1',
+        buildNumber: '1',
+        buildSignature: '',
+      );
+      final library = Library()..prefs = await SharedPreferences.getInstance();
+      library.categories = ['Romans'];
+      library.books = [
+        Book(id: '1', title: 'La mer', author: 'Alice', categories: ['Romans']),
+        Book(id: '2', title: 'Le ciel', author: 'Bob'),
+      ];
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+          child: Epinal(library: library),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reprendre la lecture'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byType(TextField),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(find.byType(TextField), 'introuvable');
+      await tester.pumpAndSettle();
+      expect(find.text('Aucun livre trouvé'), findsOneWidget);
+      await tester.ensureVisible(find.text('Effacer les filtres'));
+      await tester.tap(find.text('Effacer les filtres'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reprendre la lecture'), findsOneWidget);
+      final grid = tester.widget<SliverGrid>(find.byType(SliverGrid));
+      expect(
+        (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
+            .crossAxisCount,
+        1,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

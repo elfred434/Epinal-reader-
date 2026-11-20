@@ -36,7 +36,7 @@ Flutter 3.47.9, JDK 17, Android SDK et `flutter pub get`. `flutter analyze` puis
 Dans Arena, utilisez `scripts/flutter-local.sh pub get`, puis `scripts/flutter-local.sh analyze --no-pub` et `scripts/flutter-local.sh test --no-pub` (Flutter doit être dans le `PATH`, ou définissez `FLUTTER_BIN`). Le script place les caches de l’outil et de Pub sous `~/.cache/epinal-reader`, dossier exclu des sauvegardes Arena. Les répertoires générés `.dart_tool` et `build` peuvent être supprimés après les tests ; ils sont régénérés automatiquement. Ne supprimez pas les sources, les fichiers EPUB personnels ni la sauvegarde de la clé de signature.
 
 ## Modes de lecture
-Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conservé entre les sessions et s’applique aux livres ouverts ensuite. La première ouverture après mise à jour utilise **Long strip** par défaut : défilement vertical continu (et non page par page), y compris entre les chapitres compatibles.
+Dans un livre, ouvrez **Outils de lecture** (•••) puis **Mode de lecture**. Le choix est conservé entre les sessions et s’applique aux livres ouverts ensuite. La première ouverture après mise à jour utilise **Long strip** par défaut : défilement vertical continu (et non page par page), y compris entre les chapitres compatibles.
 - **Left to Right** : pages horizontales, glisser à gauche pour avancer.
 - **Right to Left** : pages horizontales, glisser à droite pour avancer.
 - **Vertical** : pages successives, glisser vers le haut pour avancer.
@@ -46,7 +46,9 @@ Dans un livre, ouvrez le menu ⋮ puis **Mode de lecture**. Le choix est conserv
 Le lecteur tente de restaurer la position CFI lors d’un changement de mode. Les gestes et la mise en page peuvent varier selon l’EPUB ; les modes doivent être vérifiés sur appareil, en particulier pour les livres à mise en page fixe et en écriture verticale.
 
 ## Bibliothèque
-- Les boutons de la barre de bibliothèque permettent de basculer entre la liste et les cartes. La vue choisie est enregistrée localement.
+- La bibliothèque présente un bouton **Importer**, une recherche par titre ou auteur, des filtres par catégorie et un compteur. Si aucun livre ne correspond, **Effacer les filtres** permet de revenir à la liste complète.
+- **Reprendre la lecture** rouvre le dernier livre ouvert. Les boutons de la bibliothèque permettent de basculer entre liste et cartes ; la vue choisie est enregistrée localement.
+- En lecture, les boutons en haut donnent accès au sommaire et au confort visuel. **Outils de lecture** regroupe la recherche, les signets, les passages, les modes et la lecture vocale ; la barre en bas indique la progression et permet de naviguer ou de poser un signet.
 - Dans le menu ⋮ d’un livre, **Choisir une image de couverture** accepte les fichiers JPG, PNG et WebP (12 Mo et 20 mégapixels maximum). La vignette est conservée dans le stockage privé, sans modifier le fichier EPUB ni l’image d’origine. **Restaurer la couverture EPUB** rétablit la couverture intégrée si elle existe, ou la vignette par défaut sinon.
 - Les réglages d’apparence, de catégories et de mise à jour sont regroupés dans l’écran **Paramètres**.
 

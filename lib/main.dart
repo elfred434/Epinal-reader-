@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'reader.dart';
 import 'book_update_review.dart';
+import 'book_picker.dart';
 import 'categories.dart';
 import 'storage.dart';
 import 'settings_page.dart';
@@ -91,6 +92,7 @@ class Shelf extends StatefulWidget {
 
 class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
   String query = '';
+  final searchInput = TextEditingController();
   String? selectedCategory; // null = all, empty string = unclassified.
   bool busy = false, checking = false, waitingPermission = false;
   late bool gridView;
@@ -109,6 +111,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    searchInput.dispose();
     super.dispose();
   }
 
@@ -129,32 +132,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
 
   Future<Book?> chooseBookForUpdate() => showDialog<Book>(
     context: context,
-    builder: (c) => AlertDialog(
-      title: const Text('Quel livre compléter ?'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: library.books.isEmpty
-            ? const Text('Ajoutez d’abord un livre à votre bibliothèque.')
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: library.books.length,
-                itemBuilder: (_, index) {
-                  final book = library.books[index];
-                  return ListTile(
-                    title: Text(book.title),
-                    subtitle: book.author.isEmpty ? null : Text(book.author),
-                    onTap: () => Navigator.pop(c, book),
-                  );
-                },
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(c),
-          child: const Text('Annuler'),
-        ),
-      ],
-    ),
+    builder: (_) => BookPickerDialog(books: library.books),
   );
 
   Future<void> importBook() async {
@@ -457,6 +435,9 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
   }
 
   Future<void> openBook(Book book) async {
+    if (busy) return;
+    await library.prefs.setString('library.lastOpened', book.id);
+    if (!mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -493,6 +474,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
 
   Widget bookMenu(Book book) => PopupMenuButton<String>(
     tooltip: 'Options du livre',
+    enabled: !busy,
     onSelected: (value) {
       switch (value) {
         case 'updateBook':
@@ -540,7 +522,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => openBook(b),
+        onTap: busy ? null : () => openBook(b),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -575,6 +557,17 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                         style: TextStyle(color: scheme.primary, fontSize: 11),
                       ),
                     const SizedBox(height: 7),
+                    if (b.cfi != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: b.progress.clamp(0, 1),
+                          minHeight: 3,
+                          semanticsLabel: 'Progression de lecture',
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                    ],
                     Text(
                       b.cfi == null
                           ? 'À LIRE'
@@ -605,7 +598,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
-        onTap: () => openBook(b),
+        onTap: busy ? null : () => openBook(b),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -657,6 +650,17 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(height: 5),
+                  if (b.cfi != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: b.progress.clamp(0, 1),
+                        minHeight: 3,
+                        semanticsLabel: 'Progression de lecture',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
                   Text(
                     b.cfi == null
                         ? 'À LIRE'
@@ -676,6 +680,115 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     );
   }
 
+  Widget _header(ColorScheme scheme) => Container(
+    width: double.infinity,
+    color: const Color(0xff1d2b22),
+    padding: const EdgeInsets.fromLTRB(20, 12, 16, 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'ÉPINAL  /  LECTEUR EPUB',
+                style: TextStyle(
+                  color: Color(0xffb2c8ad),
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Paramètres',
+              color: Colors.white,
+              onPressed: openSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
+          ],
+        ),
+        const Text(
+          'Votre bibliothèque',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Tous vos livres, au même endroit.',
+          style: TextStyle(color: Color(0xffd6e2d3), height: 1.3),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: busy ? null : importBook,
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xffe0eadb),
+            foregroundColor: const Color(0xff1d2b22),
+          ),
+          icon: const Icon(Icons.add),
+          label: const Text('Importer'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _emptyState(ColorScheme scheme) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            library.books.isEmpty
+                ? Icons.menu_book_outlined
+                : Icons.search_off_outlined,
+            size: 40,
+            color: scheme.primary,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            library.books.isEmpty
+                ? 'Votre bibliothèque est vide'
+                : 'Aucun livre trouvé',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            library.books.isEmpty
+                ? 'Touchez « Importer » pour choisir un fichier EPUB sur votre appareil.'
+                : 'Essayez un autre titre ou retirez vos filtres.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+          ),
+          if (library.books.isNotEmpty &&
+              (query.isNotEmpty || selectedCategory != null))
+            TextButton(
+              onPressed: () {
+                searchInput.clear();
+                setState(() {
+                  query = '';
+                  selectedCategory = null;
+                });
+              },
+              child: const Text('Effacer les filtres'),
+            ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -689,194 +802,206 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
         )
         .where(
           (b) => '${b.title} ${b.author}'.toLowerCase().contains(
-            query.toLowerCase(),
+            query.trim().toLowerCase(),
           ),
         )
         .toList();
+    final recentId = library.prefs.getString('library.lastOpened');
+    final recent = library.books.where((b) => b.id == recentId).firstOrNull;
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              color: const Color(0xff1d2b22),
-              padding: const EdgeInsets.fromLTRB(20, 12, 14, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'ÉPINAL  /  LECTEUR EPUB',
-                          style: TextStyle(
-                            color: Color(0xffb2c8ad),
-                            fontSize: 11,
-                            letterSpacing: 1.8,
-                            fontWeight: FontWeight.bold,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scale = MediaQuery.textScalerOf(
+              context,
+            ).scale(1).clamp(1.0, 3.0);
+            final columns = scale > 1.5 && constraints.maxWidth < 500
+                ? 1
+                : constraints.maxWidth >= 1000
+                ? 5
+                : constraints.maxWidth >= 700
+                ? 4
+                : constraints.maxWidth >= 500
+                ? 3
+                : 2;
+            final width =
+                (constraints.maxWidth - 40 - (columns - 1) * 12) / columns;
+            return CustomScrollView(
+              key: const PageStorageKey('shelf-scroll'),
+              slivers: [
+                SliverToBoxAdapter(child: _header(scheme)),
+                if (busy)
+                  const SliverToBoxAdapter(child: LinearProgressIndicator()),
+                if (recent != null && query.isEmpty && selectedCategory == null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      child: Card(
+                        color: scheme.primaryContainer,
+                        elevation: 0,
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.play_circle_outline,
+                            color: scheme.onPrimaryContainer,
+                            size: 32,
                           ),
+                          title: Text(
+                            'Reprendre la lecture',
+                            style: TextStyle(
+                              color: scheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Text(
+                            recent.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: scheme.onPrimaryContainer),
+                          ),
+                          trailing: Icon(
+                            Icons.chevron_right,
+                            color: scheme.onPrimaryContainer,
+                          ),
+                          onTap: busy ? null : () => openBook(recent),
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'Paramètres',
-                        color: Colors.white,
-                        onPressed: openSettings,
-                        icon: const Icon(Icons.settings_outlined),
-                      ),
-                    ],
-                  ),
-                  const Text(
-                    'Votre bibliothèque',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 27,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${library.books.length} LIVRE${library.books.length > 1 ? 'S' : ''}',
-                      style: TextStyle(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                        fontSize: 12,
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                    child: TextField(
+                      controller: searchInput,
+                      onChanged: (value) => setState(() => query = value),
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        labelText: 'Rechercher dans la bibliothèque',
+                        hintText: 'Titre ou auteur',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: query.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Effacer la recherche',
+                                onPressed: () {
+                                  searchInput.clear();
+                                  setState(() => query = '');
+                                },
+                                icon: const Icon(Icons.close),
+                              ),
+                        filled: true,
+                        fillColor: scheme.surfaceContainerLow,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Vue liste',
-                    isSelected: !gridView,
-                    onPressed: () => setView(false),
-                    icon: const Icon(Icons.view_list_outlined),
-                    selectedIcon: const Icon(Icons.view_list),
-                  ),
-                  IconButton(
-                    tooltip: 'Vue cartes',
-                    isSelected: gridView,
-                    onPressed: () => setView(true),
-                    icon: const Icon(Icons.grid_view_outlined),
-                    selectedIcon: const Icon(Icons.grid_view),
-                  ),
-                  const SizedBox(width: 4),
-                  FilledButton.icon(
-                    onPressed: busy ? null : importBook,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Importer'),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TextField(
-                onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: 'Rechercher un titre ou un auteur',
-                  filled: true,
-                  fillColor: scheme.surfaceContainerLow,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
                   ),
                 ),
-              ),
-            ),
-            SizedBox(
-              height: 56,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(20, 5, 20, 5),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: const Text('Tous'),
-                      selected: selectedCategory == null,
-                      onSelected: (_) =>
-                          setState(() => selectedCategory = null),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: const Text('Sans catégorie'),
-                      selected: selectedCategory == '',
-                      onSelected: (_) => setState(() => selectedCategory = ''),
-                    ),
-                  ),
-                  for (final category in library.categories)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(category),
-                        selected: selectedCategory == category,
-                        onSelected: (_) =>
-                            setState(() => selectedCategory = category),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (busy) const LinearProgressIndicator(),
-            Expanded(
-              child: items.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(
-                          library.books.isEmpty
-                              ? 'Votre prochaine histoire commence ici.\n\nImportez un fichier EPUB depuis votre appareil.'
-                              : 'Aucun livre ne correspond à votre recherche.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            height: 1.6,
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: (58 * scale).clamp(58.0, 100.0),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: const Text('Tous'),
+                            selected: selectedCategory == null,
+                            onSelected: (_) =>
+                                setState(() => selectedCategory = null),
                           ),
                         ),
-                      ),
-                    )
-                  : gridView
-                  ? LayoutBuilder(
-                      builder: (context, constraints) {
-                        final count = constraints.maxWidth >= 700
-                            ? 4
-                            : constraints.maxWidth >= 500
-                            ? 3
-                            : 2;
-                        final width =
-                            (constraints.maxWidth - 40 - (count - 1) * 12) /
-                            count;
-                        return GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                          itemCount: items.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: count,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                mainAxisExtent: width * 1.15 + 90,
-                              ),
-                          itemBuilder: (_, index) => gridItem(items[index]),
-                        );
-                      },
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                      itemCount: items.length,
-                      itemBuilder: (_, index) => listItem(items[index]),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: const Text('Sans catégorie'),
+                            selected: selectedCategory == '',
+                            onSelected: (_) =>
+                                setState(() => selectedCategory = ''),
+                          ),
+                        ),
+                        for (final category in library.categories)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(category),
+                              selected: selectedCategory == category,
+                              onSelected: (_) =>
+                                  setState(() => selectedCategory = category),
+                            ),
+                          ),
+                      ],
                     ),
-            ),
-          ],
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${items.length} livre${items.length > 1 ? 's' : ''}',
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Vue liste',
+                          isSelected: !gridView,
+                          onPressed: () => setView(false),
+                          icon: const Icon(Icons.view_list_outlined),
+                          selectedIcon: const Icon(Icons.view_list),
+                        ),
+                        IconButton(
+                          tooltip: 'Vue cartes',
+                          isSelected: gridView,
+                          onPressed: () => setView(true),
+                          icon: const Icon(Icons.grid_view_outlined),
+                          selectedIcon: const Icon(Icons.grid_view),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (items.isEmpty)
+                  SliverToBoxAdapter(child: _emptyState(scheme))
+                else if (gridView)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                    sliver: SliverGrid(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => gridItem(items[index]),
+                        childCount: items.length,
+                      ),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        mainAxisExtent: width * 1.15 + 100 * scale,
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => listItem(items[index]),
+                        childCount: items.length,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );

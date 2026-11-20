@@ -59,6 +59,33 @@ void main() {
       );
     },
   );
+  testWidgets('import lets you identify an existing book as the target', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'Épinal',
+      packageName: 'com.epinal.reader',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
+    final library = Library()..prefs = await SharedPreferences.getInstance();
+    library.books = [Book(id: '1', title: 'Mon roman', author: 'Auteur')];
+    await tester.pumpWidget(Epinal(library: library));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Importer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ajouter un nouveau livre'), findsOneWidget);
+    await tester.tap(find.text('Ajouter la suite d’un livre'));
+    await tester.pumpAndSettle();
+    expect(find.text('Quel livre compléter ?'), findsOneWidget);
+    expect(find.text('Mon roman'), findsWidgets);
+    await tester.tap(find.text('Annuler').last);
+    await tester.pumpAndSettle();
+    expect(library.books, hasLength(1));
+  });
+
   testWidgets('filtrer les livres par catégorie et sans catégorie', (
     tester,
   ) async {

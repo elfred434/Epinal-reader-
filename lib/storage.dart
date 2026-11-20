@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'book_update.dart';
 
 /// Decode off the UI thread and reject images whose encoded or decoded size
 /// would put excessive pressure on a mobile device.
@@ -228,6 +229,101 @@ class Library {
     return b;
   }
 
+  File previousEdition(Book book) =>
+      File('${dir.path}/${book.id}.previous.epub');
+
+  Future<Uint8List> _readEpubForUpdate(File source) async {
+    final length = await source.length();
+    if (length <= 0 || length > 50 * 1024 * 1024) {
+      throw const FormatException(
+        'Le fichier doit faire moins de 50 Mo pour cette comparaison.',
+      );
+    }
+    return source.readAsBytes();
+  }
+
+  Future<EditionComparison> compareUpdate(Book book, File source) async {
+    final oldBytes = await _readEpubForUpdate(file(book));
+    final newBytes = await _readEpubForUpdate(source);
+    // Check archive limits before the EPUB parser decompresses its contents.
+    final comparison = await compute(compareEditions, [oldBytes, newBytes]);
+    await EpubReader.openBook(oldBytes);
+    await EpubReader.openBook(newBytes);
+    return comparison;
+  }
+
+  Future<void> applyUpdate(
+    Book book,
+    File source,
+    EditionComparison comparison,
+    Map<String, bool> decisions,
+  ) async {
+    final oldBytes = await _readEpubForUpdate(file(book));
+    final newBytes = await _readEpubForUpdate(source);
+    final merged = await compute(
+      buildUpdatedEdition,
+      EditionBuildInput(oldBytes, newBytes, comparison, decisions),
+    );
+    await EpubReader.openBook(merged);
+    final stage = File('${file(book).path}.update-tmp');
+    final backupStage = File('${previousEdition(book).path}.tmp');
+    try {
+      await stage.writeAsBytes(merged, flush: true);
+      await backupStage.writeAsBytes(oldBytes, flush: true);
+      // Cache must be regenerated for the expanded book; keep IDs and notes.
+      await prefs.remove('locations.${book.id}');
+      await prefs.setString(
+        'edition.backup.${book.id}',
+        jsonEncode({
+          'cfi': book.cfi,
+          'progress': book.progress,
+          'sha256': sha256.convert(oldBytes).toString(),
+        }),
+      );
+      await backupStage.rename(previousEdition(book).path);
+      // Same-directory rename replaces the live file atomically on Android.
+      await stage.rename(file(book).path);
+    } finally {
+      if (await stage.exists()) await stage.delete();
+      if (await backupStage.exists()) await backupStage.delete();
+    }
+  }
+
+  Future<void> restorePreviousEdition(Book book) async {
+    final backup = previousEdition(book);
+    if (!await backup.exists())
+      throw const FormatException('Aucune version précédente disponible.');
+    final bytes = await _readEpubForUpdate(backup);
+    await EpubReader.openBook(bytes);
+    final stage = File('${file(book).path}.restore-tmp');
+    try {
+      await stage.writeAsBytes(bytes, flush: true);
+      await prefs.remove('locations.${book.id}');
+      await stage.rename(file(book).path);
+      final saved = prefs.getString('edition.backup.${book.id}');
+      // A crash between backup replacement and preference update must never
+      // restore a CFI from a different edition.
+      Map<String, dynamic>? state;
+      try {
+        if (saved != null) state = jsonDecode(saved) as Map<String, dynamic>;
+      } catch (_) {
+        /* use safe reset below */
+      }
+      if (state?['sha256'] == sha256.convert(bytes).toString()) {
+        book.cfi = state?['cfi'] as String?;
+        book.progress = (state?['progress'] as num?)?.toDouble() ?? 0;
+      } else {
+        book.cfi = null;
+        book.progress = 0;
+      }
+      await save();
+      await backup.delete();
+      await prefs.remove('edition.backup.${book.id}');
+    } finally {
+      if (await stage.exists()) await stage.delete();
+    }
+  }
+
   /// Replaces only the private thumbnail, never the original EPUB or image.
   Future<void> setCustomCover(Book book, File source) async {
     final size = await source.length();
@@ -272,6 +368,8 @@ class Library {
     await prefs.remove('marks.${b.id}');
     await prefs.remove('highlights.${b.id}');
     await prefs.remove('locations.${b.id}');
+    await prefs.remove('edition.backup.${b.id}');
+    if (await previousEdition(b).exists()) await previousEdition(b).delete();
     if (await file(b).exists()) await file(b).delete();
     if (await cover(b).exists()) await cover(b).delete();
   }

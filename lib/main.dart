@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'reader.dart';
+import 'book_update_review.dart';
 import 'categories.dart';
 import 'storage.dart';
 import 'settings_page.dart';
@@ -126,13 +127,72 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       ).showSnackBar(SnackBar(content: Text(value)));
   }
 
+  Future<Book?> chooseBookForUpdate() => showDialog<Book>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Quel livre compléter ?'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: library.books.isEmpty
+            ? const Text('Ajoutez d’abord un livre à votre bibliothèque.')
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: library.books.length,
+                itemBuilder: (_, index) {
+                  final book = library.books[index];
+                  return ListTile(
+                    title: Text(book.title),
+                    subtitle: book.author.isEmpty ? null : Text(book.author),
+                    onTap: () => Navigator.pop(c, book),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Annuler'),
+        ),
+      ],
+    ),
+  );
+
   Future<void> importBook() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.library_add_outlined),
+              title: const Text('Ajouter un nouveau livre'),
+              onTap: () => Navigator.pop(c, 'new'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.library_add_check_outlined),
+              title: const Text('Ajouter la suite d’un livre'),
+              subtitle: const Text('Comparer avec un livre de la bibliothèque'),
+              onTap: () => Navigator.pop(c, 'update'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'update') {
+      final book = await chooseBookForUpdate();
+      if (book != null && mounted) await importBookUpdate(book);
+      return;
+    }
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['epub'],
       );
-      if (result == null || result.files.single.path == null) return;
+      if (result == null || result.files.single.path == null || !mounted)
+        return;
       setState(() => busy = true);
       final before = library.books.length;
       await library.importFile(File(result.files.single.path!));
@@ -144,10 +204,89 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
               : 'Livre ajouté à votre bibliothèque.',
         );
       }
-    } catch (e) {
+    } catch (_) {
       snack(
         'Import impossible. Vérifiez que le fichier est un EPUB valide et sans DRM.',
       );
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> importBookUpdate(Book book) async {
+    if (busy) return;
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['epub'],
+      );
+      final path = picked?.files.single.path;
+      if (path == null || !mounted) return;
+      setState(() => busy = true);
+      final source = File(path);
+      final comparison = await library.compareUpdate(book, source);
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (comparison.added.isEmpty && comparison.conflicts.isEmpty) {
+        snack('Aucune nouvelle section ou modification détectée.');
+        return;
+      }
+      final decisions = await Navigator.push<Map<String, bool>>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              BookUpdateReview(bookTitle: book.title, comparison: comparison),
+        ),
+      );
+      if (!mounted || decisions == null) return;
+      setState(() => busy = true);
+      await library.applyUpdate(book, source, comparison, decisions);
+      if (mounted) setState(() {});
+      snack('Suite ajoutée. Votre version précédente reste disponible.');
+    } catch (e) {
+      snack(
+        e is FormatException
+            ? e.message
+            : 'Comparaison impossible. Vérifiez que les fichiers EPUB sont valides et sans DRM.',
+      );
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> restoreBookEdition(Book book) async {
+    if (!await library.previousEdition(book).exists()) {
+      snack('Aucune version précédente disponible.');
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Rétablir la version précédente ?'),
+        content: const Text(
+          'La dernière suite ajoutée ne sera plus dans le livre. La position précédente sera rétablie. Les annotations restent enregistrées, mais celles ajoutées dans la suite pourraient ne plus correspondre.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Rétablir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      await library.restorePreviousEdition(book);
+      if (mounted) setState(() {});
+      snack('Version précédente rétablie.');
+    } catch (e) {
+      snack(e is FormatException ? e.message : 'Restauration impossible.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -356,6 +495,10 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     tooltip: 'Options du livre',
     onSelected: (value) {
       switch (value) {
+        case 'updateBook':
+          importBookUpdate(book);
+        case 'restoreEdition':
+          restoreBookEdition(book);
         case 'cover':
           chooseCover(book);
         case 'restore':
@@ -367,6 +510,11 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       }
     },
     itemBuilder: (_) => const [
+      PopupMenuItem(value: 'updateBook', child: Text('Ajouter la suite')),
+      PopupMenuItem(
+        value: 'restoreEdition',
+        child: Text('Rétablir la version précédente'),
+      ),
       PopupMenuItem(
         value: 'cover',
         child: Text('Choisir une image de couverture'),

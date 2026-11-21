@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'reader.dart';
 import 'book_update_review.dart';
 import 'book_export.dart';
+import 'position_transfer.dart';
+import 'position_transfer_dialogs.dart';
 import 'book_picker.dart';
 import 'categories.dart';
 import 'storage.dart';
@@ -398,6 +400,83 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     await library.prefs.setBool('library.grid', grid);
   }
 
+  Future<void> transferPosition(Book book) async {
+    if (busy) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Transférer la position',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Pour la même édition EPUB sur les deux appareils.',
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_outlined),
+                title: const Text('Créer un code'),
+                subtitle: const Text('Envoyer ma position à un autre appareil'),
+                onTap: () => Navigator.pop(c, 'send'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Recevoir un code'),
+                subtitle: const Text('Reprendre une position reçue'),
+                onTap: () => Navigator.pop(c, 'receive'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'send') {
+      setState(() => busy = true);
+      String? code;
+      try {
+        code = await createReadingPositionCode(library, book);
+      } catch (e) {
+        snack(
+          e is FormatException ? e.message : 'Impossible de créer le code.',
+        );
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
+      if (!mounted || code == null) return;
+      final copied = await showDialog<bool>(
+        context: context,
+        builder: (_) => PositionCodeDialog(code: code!),
+      );
+      if (copied == true) snack('Code copié. Envoyez-le à l’autre appareil.');
+    } else {
+      final input = await showDialog<String>(
+        context: context,
+        builder: (_) => const PositionImportDialog(),
+      );
+      if (!mounted || input == null) return;
+      setState(() => busy = true);
+      try {
+        await applyReadingPositionCode(library, book, input);
+        if (mounted) setState(() {});
+        snack('Position reçue. Ouvrez le livre pour reprendre la lecture.');
+      } catch (e) {
+        snack(
+          e is FormatException ? e.message : 'Impossible d’appliquer ce code.',
+        );
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
+    }
+  }
+
   Future<void> exportCurrentBook(Book book) async {
     if (busy) return;
     setState(() => busy = true);
@@ -509,6 +588,8 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
           importBookUpdate(book);
         case 'exportBook':
           exportCurrentBook(book);
+        case 'transferPosition':
+          transferPosition(book);
         case 'restoreEdition':
           restoreBookEdition(book);
         case 'cover':
@@ -524,6 +605,10 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     itemBuilder: (_) => const [
       PopupMenuItem(value: 'updateBook', child: Text('Ajouter la suite')),
       PopupMenuItem(value: 'exportBook', child: Text('Exporter le livre EPUB')),
+      PopupMenuItem(
+        value: 'transferPosition',
+        child: Text('Transférer la position'),
+      ),
       PopupMenuItem(
         value: 'restoreEdition',
         child: Text('Rétablir la version précédente'),

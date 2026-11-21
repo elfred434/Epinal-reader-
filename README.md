@@ -81,3 +81,11 @@ Pour mettre à jour, utilisez **Paramètres → Vérifier les mises à jour**, o
 Le test d’intégration WebView2 peut réussir puis signaler une erreur de nettoyage du dossier temporaire du harnais Flutter sur le runner Windows ; cette anomalie est signalée dans les logs et ne remplace pas un essai sur un PC réel.
 
 Chaque push sur `main` lance la compilation et la publication de l’APK Android signé. Après cette publication, GitHub Actions teste le chargement d’un EPUB avec WebView2, compile Windows x64, teste installation, raccourcis, réinstallation et conservation des données, puis ajoute le setup et le ZIP à la même Release. Les fichiers Windows peuvent apparaître quelques minutes après l’APK ; si leur compilation échoue, l’APK Android reste publié.
+
+## Transférer une position de lecture
+Pour reprendre le même livre sur Android ou Windows sans compte ni serveur :
+1. Sur l’appareil source, ouvrez le livre et allez à l’endroit souhaité, puis revenez à la bibliothèque. Dans **⋮ → Transférer la position → Créer un code**, touchez **Copier le code**.
+2. Transmettez ce code à l’autre appareil, par exemple par message, e-mail ou un presse-papiers partagé. La copie ne traverse pas automatiquement les appareils.
+3. Sur l’appareil destinataire, importez le même EPUB si nécessaire. Sur ce livre, choisissez **⋮ → Transférer la position → Recevoir un code**, collez le code et touchez **Appliquer**. Ouvrez le livre pour reprendre à la position reçue.
+
+Le code contient un repère EPUB précis, un pourcentage et l’empreinte SHA-256 du fichier, mais ne contient pas le livre. Les fichiers doivent être exactement identiques octet pour octet ; deux éditions ayant le même titre ou des fichiers EPUB reconditionnés peuvent être refusés. Pour un livre complété, exportez l’édition mise à jour et utilisez cette même copie sur l’autre appareil. En cas d’erreur ou de différence, la position existante n’est pas remplacée. Ce transfert manuel ne synchronise pas les annotations, signets, catégories ni modifications futures et ne vérifie pas l’identité de l’expéditeur ; acceptez seulement les codes de confiance.

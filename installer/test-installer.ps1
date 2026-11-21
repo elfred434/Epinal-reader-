@@ -35,6 +35,21 @@ try {
     if (!(Test-Path $link)) { throw "Raccourci absent : $link" }
     if ($shell.CreateShortcut($link).TargetPath -ne $exe) { throw "Mauvaise cible du raccourci : $link" }
   }
+  # Check the actual native window title, not just the shortcut label.
+  $app = Start-Process -FilePath $exe -WorkingDirectory $directory -PassThru
+  try {
+    $title = ''
+    for ($i = 0; $i -lt 30; $i++) {
+      Start-Sleep -Seconds 1
+      $app.Refresh()
+      if ($app.HasExited) { throw 'Épinal a quitté avant la vérification de sa fenêtre' }
+      $title = $app.MainWindowTitle
+      if ($title) { break }
+    }
+    if ($title -ne 'Épinal') { throw "Titre de fenêtre incorrect : $title" }
+  } finally {
+    if (!$app.HasExited) { Stop-Process -Id $app.Id -Force; $app.WaitForExit() }
+  }
   if (!(Test-Path $sentinel)) { throw "Les données ont disparu pendant l’installation" }
   # Reinstall over the existing version: same directory and data.
   Start-Installer $args

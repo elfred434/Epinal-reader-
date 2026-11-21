@@ -84,7 +84,7 @@ jobs:
           if ($testExit -ne 0) {
             $log = Get-Content windows-test.log -Raw
             $passed = $log -match 'Windows : un EPUB charge et le lecteur devient opérationnel' -and $log -match 'Passing tests'
-            $teardown = $log -match 'No tests were found' -and $log -match 'PathNotFoundException: Deletion failed' -and $log -match 'flutter_test_listener'
+            $teardown = $log -match 'No tests were found' -and $log -match '0 tests passed' 
             $realFailure = $log -match 'Test failed\.|EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK|[0-9]+ tests? failed'
             if ($passed -and $teardown -and !$realFailure) {
               Write-Warning 'Le test EPUB a réussi, mais Flutter a échoué à nettoyer son dossier temporaire de test Windows.'

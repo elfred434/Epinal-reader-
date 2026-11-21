@@ -84,7 +84,7 @@ jobs:
           if ($testExit -ne 0) {
             $log = Get-Content windows-test.log -Raw
             $passed = $log -match 'Windows : un EPUB charge et le lecteur devient opérationnel' -and $log -match 'Passing tests'
-            $teardown = $log -match 'No tests were found' -and $log -match '0 tests passed' 
+            $teardown = $log -match 'No tests were found' -and $log -match '0 tests passed'
             $realFailure = $log -match 'Test failed\.|EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK|[0-9]+ tests? failed'
             if ($passed -and $teardown -and !$realFailure) {
               Write-Warning 'Le test EPUB a réussi, mais Flutter a échoué à nettoyer son dossier temporaire de test Windows.'
@@ -109,7 +109,7 @@ jobs:
           if (!(Test-Path $iscc)) { throw 'Inno Setup 6 introuvable sur le runner Windows' }
           & $iscc "/DAppVersion=1.0.$env:GITHUB_RUN_NUMBER" installer/epinal.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (!(Test-Path 'Epinal-Setup-x64.exe')) { throw 'Programme d’installation absent' }
+          if (!(Test-Path 'Epinal-Setup-x64.exe')) { throw "Programme d’installation absent" }
       - name: Tester l’installation et la mise à jour
         shell: pwsh
         run: ./installer/test-installer.ps1

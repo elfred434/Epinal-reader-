@@ -35,7 +35,7 @@ try {
     if (!(Test-Path $link)) { throw "Raccourci absent : $link" }
     if ($shell.CreateShortcut($link).TargetPath -ne $exe) { throw "Mauvaise cible du raccourci : $link" }
   }
-  if (!(Test-Path $sentinel)) { throw 'Les données ont disparu pendant l’installation' }
+  if (!(Test-Path $sentinel)) { throw "Les données ont disparu pendant l’installation" }
   # Reinstall over the existing version: same directory and data.
   Start-Installer $args
   if (!(Test-Path $sentinel) -or !(Test-Path $exe)) { throw 'Échec de conservation pendant la mise à jour' }

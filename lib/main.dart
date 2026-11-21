@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'reader.dart';
 import 'book_update_review.dart';
+import 'book_export.dart';
 import 'book_picker.dart';
 import 'categories.dart';
 import 'storage.dart';
@@ -387,6 +388,23 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     await library.prefs.setBool('library.grid', grid);
   }
 
+  Future<void> exportCurrentBook(Book book) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final saved = await exportBook(library, book);
+      if (saved) snack('Livre EPUB exporté.');
+    } catch (e) {
+      snack(
+        e is FormatException
+            ? e.message
+            : 'Export impossible. Vérifiez l’espace disponible et réessayez. Un fichier incomplet peut rester dans le dossier choisi.',
+      );
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> chooseCover(Book book) async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -479,6 +497,8 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
       switch (value) {
         case 'updateBook':
           importBookUpdate(book);
+        case 'exportBook':
+          exportCurrentBook(book);
         case 'restoreEdition':
           restoreBookEdition(book);
         case 'cover':
@@ -493,6 +513,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
     },
     itemBuilder: (_) => const [
       PopupMenuItem(value: 'updateBook', child: Text('Ajouter la suite')),
+      PopupMenuItem(value: 'exportBook', child: Text('Exporter le livre EPUB')),
       PopupMenuItem(
         value: 'restoreEdition',
         child: Text('Rétablir la version précédente'),

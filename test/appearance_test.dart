@@ -138,6 +138,7 @@ void main() {
     expect(library.prefs.getBool('library.grid'), isTrue);
     await tester.tap(find.byTooltip('Options du livre'));
     await tester.pumpAndSettle();
+    expect(find.text('Exporter le livre EPUB'), findsOneWidget);
     expect(find.text('Choisir une image de couverture'), findsOneWidget);
     expect(find.text('Restaurer la couverture EPUB'), findsOneWidget);
     await tester.tapAt(const Offset(5, 5));

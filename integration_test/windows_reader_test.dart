@@ -27,7 +27,10 @@ void main() {
         ),
       );
       bool isReady() {
-        final finder = find.byTooltip('Confort de lecture');
+        final finder = find.byWidgetPredicate(
+          (widget) =>
+              widget is IconButton && widget.tooltip == 'Confort de lecture',
+        );
         return finder.evaluate().isNotEmpty &&
             tester.widget<IconButton>(finder).onPressed != null;
       }

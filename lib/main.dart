@@ -288,7 +288,7 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
           title: const Text('Mise à jour disponible'),
           content: Text(
             Platform.isWindows
-                ? 'La version ${update.version.substring(1)} est disponible. Téléchargez le ZIP Windows sur GitHub, fermez Épinal, puis extrayez la nouvelle version. Vos livres restent dans les données de votre utilisateur Windows.'
+                ? 'La version ${update.version.substring(1)} est disponible. Téléchargez et lancez le programme d’installation Windows depuis GitHub. Fermez Épinal si demandé. Vos livres et réglages seront conservés.'
                 : 'La version ${update.version.substring(1)} est disponible. Elle conserve votre bibliothèque et remplace la version installée après votre confirmation Android.',
           ),
           actions: [

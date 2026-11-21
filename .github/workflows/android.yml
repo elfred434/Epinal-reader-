@@ -102,14 +102,27 @@ jobs:
           if (!(Test-Path "$directory/flutter_windows.dll")) { throw 'Moteur Flutter absent' }
           if (!(Test-Path "$directory/data/flutter_assets")) { throw 'Ressources Flutter absentes' }
           Compress-Archive -Path "$directory/*" -DestinationPath 'Epinal-Windows-x64.zip' -CompressionLevel Optimal
+      - name: Compiler le programme d’installation Windows
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 introuvable sur le runner Windows' }
+          & $iscc "/DAppVersion=1.0.$env:GITHUB_RUN_NUMBER" installer/epinal.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'Epinal-Setup-x64.exe')) { throw 'Programme d’installation absent' }
+      - name: Tester l’installation et la mise à jour
+        shell: pwsh
+        run: ./installer/test-installer.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: Epinal-Windows-x64
-          path: Epinal-Windows-x64.zip
+          path: |
+            Epinal-Setup-x64.exe
+            Epinal-Windows-x64.zip
           if-no-files-found: error
           retention-days: 90
       - name: Ajouter Windows à la publication
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v1.0.$env:GITHUB_RUN_NUMBER" Epinal-Windows-x64.zip --clobber
+        run: gh release upload "v1.0.$env:GITHUB_RUN_NUMBER" Epinal-Setup-x64.exe Epinal-Windows-x64.zip --clobber

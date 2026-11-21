@@ -61,7 +61,7 @@ class Updater {
     final build = int.parse(match.group(1)!);
     if (build <= installedBuild) return null;
     final assets = j['assets'] as List;
-    final fileName = windows ? 'Epinal-Windows-x64.zip' : 'Epinal.apk';
+    final fileName = windows ? 'Epinal-Setup-x64.exe' : 'Epinal.apk';
     final asset = assets.where((a) => a['name'] == fileName).firstOrNull;
     if (asset == null)
       throw Exception(
@@ -82,7 +82,7 @@ class Updater {
     return AppUpdate(build, version, url, digest.substring(7));
   }
 
-  /// On Windows the ZIP is updated manually after quitting the running app.
+  /// On Windows users download the setup from GitHub and confirm installation.
   static Future<void> openWindowsRelease(AppUpdate update) async {
     if (!Platform.isWindows) throw UnsupportedError('Windows uniquement');
     // Version was validated against v1.0.NUMBER in parseRelease.

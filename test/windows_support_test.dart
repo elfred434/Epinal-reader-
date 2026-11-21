@@ -8,7 +8,7 @@ class LocalHttpOverrides extends HttpOverrides {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test('mise à jour Windows choisit le ZIP et compare la version exécutable', () {
+  test('mise à jour Windows choisit le setup et compare la version exécutable', () {
     final release = {
       'tag_name': 'v1.0.21',
       'assets': [
@@ -19,9 +19,9 @@ void main() {
           'digest': 'sha256:${'a' * 64}',
         },
         {
-          'name': 'Epinal-Windows-x64.zip',
+          'name': 'Epinal-Setup-x64.exe',
           'browser_download_url':
-              'https://github.com/elfred434/Epinal-reader-/releases/download/v1.0.21/Epinal-Windows-x64.zip',
+              'https://github.com/elfred434/Epinal-reader-/releases/download/v1.0.21/Epinal-Setup-x64.exe',
           'digest': 'sha256:${'b' * 64}',
         },
       ],
@@ -34,7 +34,7 @@ void main() {
       installedBuild: 19,
       windows: true,
     )!;
-    expect(windows.asset.path, endsWith('Epinal-Windows-x64.zip'));
+    expect(windows.asset.path, endsWith('Epinal-Setup-x64.exe'));
     expect(windows.digest, 'b' * 64);
     expect(
       Updater.parseRelease(release, installedBuild: 21, windows: true),

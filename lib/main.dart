@@ -287,7 +287,9 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
         builder: (context) => AlertDialog(
           title: const Text('Mise à jour disponible'),
           content: Text(
-            'La version ${update.version.substring(1)} est disponible. Elle conserve votre bibliothèque et remplace la version installée après votre confirmation Android.',
+            Platform.isWindows
+                ? 'La version ${update.version.substring(1)} est disponible. Téléchargez le ZIP Windows sur GitHub, fermez Épinal, puis extrayez la nouvelle version. Vos livres restent dans les données de votre utilisateur Windows.'
+                : 'La version ${update.version.substring(1)} est disponible. Elle conserve votre bibliothèque et remplace la version installée après votre confirmation Android.',
           ),
           actions: [
             TextButton(
@@ -296,12 +298,20 @@ class _ShelfState extends State<Shelf> with WidgetsBindingObserver {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Mettre à jour'),
+              child: Text(
+                Platform.isWindows ? 'Ouvrir GitHub' : 'Mettre à jour',
+              ),
             ),
           ],
         ),
       );
-      if (yes == true && mounted) await downloadUpdate(update);
+      if (yes == true && mounted) {
+        if (Platform.isWindows) {
+          await Updater.openWindowsRelease(update);
+        } else {
+          await downloadUpdate(update);
+        }
+      }
     } catch (e) {
       if (!quiet) snack('Vérification impossible : $e');
     } finally {

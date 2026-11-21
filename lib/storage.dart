@@ -96,7 +96,10 @@ class Library {
   Future<void> init() async {
     prefs = await SharedPreferences.getInstance();
     categories = prefs.getStringList('categories.v1') ?? [];
-    dir = Directory('${(await getApplicationDocumentsDirectory()).path}/books');
+    final root = Platform.isWindows
+        ? await getApplicationSupportDirectory()
+        : await getApplicationDocumentsDirectory();
+    dir = Directory('${root.path}/books');
     await dir.create(recursive: true);
     try {
       books = (jsonDecode(prefs.getString('library.v2') ?? '[]') as List)
@@ -105,7 +108,9 @@ class Library {
     } catch (_) {
       books = [];
     }
-    if (!(prefs.getBool('legacy.migrated') ?? false)) await migrate();
+    if (Platform.isAndroid && !(prefs.getBool('legacy.migrated') ?? false)) {
+      await migrate();
+    }
   }
 
   File file(Book b) => File('${dir.path}/${b.id}.epub');

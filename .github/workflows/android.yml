@@ -58,3 +58,43 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v1.0.${GITHUB_RUN_NUMBER}" Epinal.apk --title "Épinal 1.0.${GITHUB_RUN_NUMBER}" --notes "APK Android signé. Installez-le par-dessus votre version existante." --latest
+  windows:
+    # Android remains independently publishable even if the Windows build fails.
+    # Wait for its release, then add the Windows archive to the same tag.
+    needs: android
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: NuGet/setup-nuget@v2
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Préparer les dépendances
+        run: flutter pub get
+      - name: Vérifier le lecteur WebView2 sur Windows
+        run: flutter test integration_test/windows_reader_test.dart -d windows
+      - name: Compiler Épinal Windows
+        shell: pwsh
+        run: flutter build windows --release --build-name="1.0.$env:GITHUB_RUN_NUMBER" --build-number="$env:GITHUB_RUN_NUMBER"
+      - name: Créer l’archive Windows
+        shell: pwsh
+        run: |
+          $directory = 'build/windows/x64/runner/Release'
+          if (!(Test-Path "$directory/Epinal.exe")) { throw 'Exécutable Windows absent' }
+          if (!(Test-Path "$directory/flutter_windows.dll")) { throw 'Moteur Flutter absent' }
+          if (!(Test-Path "$directory/data/flutter_assets")) { throw 'Ressources Flutter absentes' }
+          Compress-Archive -Path "$directory/*" -DestinationPath 'Epinal-Windows-x64.zip' -CompressionLevel Optimal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Epinal-Windows-x64
+          path: Epinal-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 90
+      - name: Ajouter Windows à la publication
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v1.0.$env:GITHUB_RUN_NUMBER" Epinal-Windows-x64.zip --clobber

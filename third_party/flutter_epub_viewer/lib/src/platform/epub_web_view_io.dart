@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
+import 'windows_reader_assets.dart';
 
 import '../models/epub_context_menu.dart';
 import '../server/epub_book_server.dart';
@@ -115,7 +117,47 @@ class _IoEpubView extends StatefulWidget {
 class _IoEpubViewState extends State<_IoEpubView> {
   final GlobalKey _webViewKey = GlobalKey();
   static InAppLocalhostServer? _localhostServer;
-  bool _isServerReady = defaultTargetPlatform != TargetPlatform.macOS;
+  bool _isServerReady =
+      defaultTargetPlatform != TargetPlatform.macOS &&
+      defaultTargetPlatform != TargetPlatform.windows;
+  String? _initializationError;
+  static Future<(WindowsReaderAssets, WebViewEnvironment)>? _windowsResources;
+  WindowsReaderAssets? _windowsAssets;
+  WebViewEnvironment? _windowsEnvironment;
+
+  static Future<(WindowsReaderAssets, WebViewEnvironment)>
+  _prepareWindows() async {
+    final version = await WebViewEnvironment.getAvailableVersion();
+    if (version == null) throw StateError('WebView2 Runtime est absent.');
+    final directory = await getApplicationSupportDirectory();
+    final environment = await WebViewEnvironment.create(
+      settings: WebViewEnvironmentSettings(
+        userDataFolder: '${directory.path}\\WebView2',
+      ),
+    );
+    if (environment == null)
+      throw StateError('Impossible de démarrer WebView2.');
+    return (await WindowsReaderAssets.start(), environment);
+  }
+
+  Future<void> _initWindows() async {
+    try {
+      final resources = await (_windowsResources ??= _prepareWindows());
+      if (!mounted) return;
+      setState(() {
+        _windowsAssets = resources.$1;
+        _windowsEnvironment = resources.$2;
+        _isServerReady = true;
+      });
+    } catch (_) {
+      _windowsResources = null;
+      if (mounted)
+        setState(
+          () => _initializationError =
+              'Le lecteur nécessite Microsoft Edge WebView2 Runtime. Installez-le ou réparez-le, puis redémarrez Épinal.',
+        );
+    }
+  }
 
   late final InAppWebViewSettings _settings = InAppWebViewSettings(
     isInspectable: kDebugMode,
@@ -140,6 +182,8 @@ class _IoEpubViewState extends State<_IoEpubView> {
     super.initState();
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       _initLocalServer();
+    } else if (defaultTargetPlatform == TargetPlatform.windows) {
+      _initWindows();
     }
   }
 
@@ -158,11 +202,22 @@ class _IoEpubViewState extends State<_IoEpubView> {
   @override
   Widget build(BuildContext context) {
     if (!_isServerReady) {
-      return Container(decoration: widget.config.backgroundDecoration);
+      return Container(
+        decoration: widget.config.backgroundDecoration,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _initializationError == null
+                ? const CircularProgressIndicator()
+                : Text(_initializationError!, textAlign: TextAlign.center),
+          ),
+        ),
+      );
     }
 
     final config = widget.config;
     final isMacOs = defaultTargetPlatform == TargetPlatform.macOS;
+    final isWindows = defaultTargetPlatform == TargetPlatform.windows;
     final port = _localhostServer?.port ?? 8080;
     final url =
         'http://localhost:$port/packages/flutter_epub_viewer/lib/assets/webpage/html/swipe.html';
@@ -175,8 +230,13 @@ class _IoEpubViewState extends State<_IoEpubView> {
           suppress: config.suppressNativeContextMenu,
         ),
         key: _webViewKey,
-        initialUrlRequest: isMacOs ? URLRequest(url: WebUri(url)) : null,
-        initialFile: isMacOs
+        webViewEnvironment: _windowsEnvironment,
+        initialUrlRequest: isWindows
+            ? URLRequest(url: WebUri(_windowsAssets!.reader.toString()))
+            : isMacOs
+            ? URLRequest(url: WebUri(url))
+            : null,
+        initialFile: isMacOs || isWindows
             ? null
             : 'packages/flutter_epub_viewer/lib/assets/webpage/html/swipe.html',
         initialSettings: _settings,
@@ -194,8 +254,9 @@ class _IoEpubViewState extends State<_IoEpubView> {
         },
         shouldInterceptRequest: EpubBookServer.usesInterception
             ? (controller, request) async {
-                final served =
-                    await EpubBookServer.instance.intercept(request.url);
+                final served = await EpubBookServer.instance.intercept(
+                  request.url,
+                );
                 if (served == null) return null;
                 return WebResourceResponse(
                   contentType: served.contentType,
@@ -211,7 +272,9 @@ class _IoEpubViewState extends State<_IoEpubView> {
         },
         onReceivedError: (controller, request, error) {
           if (kDebugMode) {
-            debugPrint("[EpubViewer] ERROR WebView error: ${error.description} (code: ${error.type}) for ${request.url}");
+            debugPrint(
+              "[EpubViewer] ERROR WebView error: ${error.description} (code: ${error.type}) for ${request.url}",
+            );
           }
         },
         onProgressChanged: (controller, progress) {},

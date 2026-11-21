@@ -9,9 +9,9 @@ import 'package:path_provider/path_provider.dart';
 class AppUpdate {
   final int build;
   final String version;
-  final Uri apk;
+  final Uri asset;
   final String digest;
-  AppUpdate(this.build, this.version, this.apk, this.digest);
+  AppUpdate(this.build, this.version, this.asset, this.digest);
 }
 
 class Updater {
@@ -25,26 +25,70 @@ class Updater {
     if (r.statusCode == 404) return null;
     if (r.statusCode != 200)
       throw Exception('GitHub indisponible (${r.statusCode}).');
-    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    final info = await PackageInfo.fromPlatform();
+    return parseRelease(
+      jsonDecode(r.body) as Map<String, dynamic>,
+      installedBuild: installedBuild(
+        info.version,
+        info.buildNumber,
+        windows: Platform.isWindows,
+      ),
+      windows: Platform.isWindows,
+    );
+  }
+
+  /// Windows VERSIONINFO contains a dotted product version without +build.
+  static int installedBuild(
+    String version,
+    String buildNumber, {
+    required bool windows,
+  }) {
+    if (!windows) return int.tryParse(buildNumber) ?? 0;
+    final match = RegExp(r'^1\.0\.(\d+)(?:\.\d+)?$').firstMatch(version);
+    return match == null
+        ? (int.tryParse(buildNumber) ?? 0)
+        : int.parse(match.group(1)!);
+  }
+
+  static AppUpdate? parseRelease(
+    Map<String, dynamic> j, {
+    required int installedBuild,
+    required bool windows,
+  }) {
     final version = j['tag_name'] as String? ?? '';
     final match = RegExp(r'^v1\.0\.(\d+)$').firstMatch(version);
     if (match == null) throw Exception('Version GitHub non reconnue.');
     final build = int.parse(match.group(1)!);
-    final installed =
-        int.tryParse((await PackageInfo.fromPlatform()).buildNumber) ?? 0;
-    if (build <= installed) return null;
+    if (build <= installedBuild) return null;
     final assets = j['assets'] as List;
-    final asset = assets.where((a) => a['name'] == 'Epinal.apk').firstOrNull;
-    if (asset == null) throw Exception('APK absent de la version publiée.');
+    final fileName = windows ? 'Epinal-Windows-x64.zip' : 'Epinal.apk';
+    final asset = assets.where((a) => a['name'] == fileName).firstOrNull;
+    if (asset == null)
+      throw Exception(
+        windows
+            ? 'La version Windows de cette publication n’est pas encore disponible.'
+            : 'APK absent de la version publiée.',
+      );
     final url = Uri.parse(asset['browser_download_url'] as String);
     if (url.scheme != 'https' ||
         url.host != 'github.com' ||
-        !url.path.startsWith('/elfred434/Epinal-reader-/releases/download/'))
+        !url.path.startsWith('/elfred434/Epinal-reader-/releases/download/')) {
       throw Exception('Adresse de téléchargement incorrecte.');
+    }
     final digest = asset['digest'] as String? ?? '';
-    if (!RegExp(r'^sha256:[a-f0-9]{64}$').hasMatch(digest))
+    if (!RegExp(r'^sha256:[a-f0-9]{64}$').hasMatch(digest)) {
       throw Exception('Empreinte SHA-256 absente ou invalide.');
+    }
     return AppUpdate(build, version, url, digest.substring(7));
+  }
+
+  /// On Windows the ZIP is updated manually after quitting the running app.
+  static Future<void> openWindowsRelease(AppUpdate update) async {
+    if (!Platform.isWindows) throw UnsupportedError('Windows uniquement');
+    // Version was validated against v1.0.NUMBER in parseRelease.
+    final page =
+        'https://github.com/elfred434/Epinal-reader-/releases/tag/${update.version}';
+    await Process.start('explorer.exe', [page]);
   }
 
   static Future<void> download(AppUpdate update) async {
@@ -58,7 +102,7 @@ class Updater {
     IOSink? sink;
     try {
       final response = await client
-          .send(http.Request('GET', update.apk))
+          .send(http.Request('GET', update.asset))
           .timeout(const Duration(seconds: 30));
       if (response.statusCode != 200)
         throw Exception('Téléchargement impossible (${response.statusCode}).');

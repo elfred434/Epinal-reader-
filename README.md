@@ -76,4 +76,6 @@ Les livres et réglages Windows sont stockés dans les données de l’utilisate
 
 Pour mettre à jour Windows, utilisez **Paramètres → Vérifier les mises à jour**, ouvrez la Release proposée et téléchargez le nouveau ZIP. Fermez Épinal, puis extrayez la nouvelle version dans un dossier propre (ou remplacez les fichiers du programme après l’avoir fermé). Les données utilisateur ne sont pas supprimées. Il n’y a pas d’installation ni de mise à jour automatique silencieuse ; l’archive est publiée sur GitHub avec son empreinte SHA-256.
 
+Le test d’intégration WebView2 peut réussir puis signaler une erreur de nettoyage du dossier temporaire du harnais Flutter sur le runner Windows ; cette anomalie est signalée dans les logs et ne remplace pas un essai sur un PC réel.
+
 Chaque push sur `main` lance la compilation et la publication de l’APK Android signé. Après cette publication, GitHub Actions teste le chargement d’un EPUB avec WebView2, compile la version Windows x64 et ajoute le ZIP à la même Release. La version Windows peut donc apparaître quelques minutes après l’APK ; si sa compilation échoue, l’APK Android reste publié.

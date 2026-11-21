@@ -88,6 +88,7 @@ jobs:
             $realFailure = $log -match 'Test failed\.|EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK|[0-9]+ tests? failed'
             if ($passed -and $teardown -and !$realFailure) {
               Write-Warning 'Le test EPUB a réussi, mais Flutter a échoué à nettoyer son dossier temporaire de test Windows.'
+              $global:LASTEXITCODE = 0
             } else { exit $testExit }
           }
       - name: Compiler Épinal Windows

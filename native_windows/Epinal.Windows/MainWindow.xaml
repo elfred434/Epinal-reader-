@@ -1,0 +1,35 @@
+<Window x:Class="Epinal.Windows.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf" Title="Épinal — version native expérimentale" Width="1120" Height="760" MinWidth="760" MinHeight="520" Background="#F5F6EF">
+  <Grid Margin="14">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <DockPanel Grid.Row="0" Margin="0,0,0,10">
+      <TextBlock DockPanel.Dock="Left" Text="Épinal" FontSize="27" FontWeight="SemiBold" Foreground="#315D49" VerticalAlignment="Center" Margin="4,0,20,0"/>
+      <WrapPanel HorizontalAlignment="Right">
+        <Button Content="Importer un EPUB" Click="ImportClick"/><Button Content="Ajouter la suite" Click="AppendClick"/><Button Content="Rétablir" Click="RestoreClick"/><Button Content="Reprendre" Click="ResumeClick"/><Button Content="Ancienne bibliothèque" Click="MigrateClick"/><Button Content="Mises à jour" Click="UpdateClick"/>
+      </WrapPanel>
+    </DockPanel>
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Background="White" BorderBrush="#D8DFD7" BorderThickness="1" CornerRadius="8" Padding="9">
+        <DockPanel>
+          <TextBox x:Name="Filter" DockPanel.Dock="Top" ToolTip="Chercher dans la bibliothèque" TextChanged="FilterChanged"/>
+          <TextBlock DockPanel.Dock="Top" Text="BIBLIOTHÈQUE" Foreground="#63756B" FontWeight="SemiBold" Margin="5,8"/>
+          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"><Button Content="Ouvrir" Click="OpenClick"/><Button Content="Exporter" Click="ExportClick"/><Button Content="Supprimer" Click="DeleteClick"/><Button Content="Classer" Click="CategoriesClick"/></StackPanel>
+          <ListBox x:Name="BooksList" MouseDoubleClick="OpenClick" DisplayMemberPath="Title" BorderThickness="0"/>
+        </DockPanel>
+      </Border>
+      <Border Grid.Column="2" Background="White" BorderBrush="#D8DFD7" BorderThickness="1" CornerRadius="8" Padding="8">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <WrapPanel Grid.Row="0">
+            <Button Content="‹" ToolTip="Page précédente" Click="PreviousClick"/><Button Content="›" ToolTip="Page suivante" Click="NextClick"/>
+            <Button Content="Sommaire" Click="TocClick"/><Button Content="Rechercher" Click="SearchClick"/><Button Content="Signet" Click="BookmarkClick"/><Button Content="Mes signets" Click="BookmarksClick"/><Button Content="Surligner" Click="HighlightClick"/><Button Content="Mes passages" Click="HighlightsClick"/>
+            <Button Content="Lecture vocale" Click="SpeakClick"/><Button Content="Arrêter voix" Click="StopSpeakClick"/><Button Content="Défilement" Click="FlowClick"/><Button Content="Thème" Click="ThemeClick"/><Button Content="A−" Click="SmallerClick"/><Button Content="A+" Click="BiggerClick"/><Button Content="Copier position" Click="CopyPositionClick"/><Button Content="Importer position" Click="PastePositionClick"/>
+          </WrapPanel>
+          <wv:WebView2 x:Name="Reader" Grid.Row="1"/>
+          <DockPanel Grid.Row="2"><TextBlock x:Name="CurrentTitle" Text="Choisissez un livre pour commencer" Margin="8"/><TextBlock x:Name="Progress" HorizontalAlignment="Right" Margin="8"/></DockPanel>
+        </Grid>
+      </Border>
+    </Grid>
+    <TextBlock Grid.Row="2" x:Name="Status" Margin="4,9,0,0" Foreground="#586C5E" Text="Prototype expérimental : ne remplace pas la version stable."/>
+  </Grid>
+</Window>

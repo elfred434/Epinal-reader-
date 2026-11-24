@@ -1,6 +1,0 @@
-analyzer:
-  exclude:
-    - third_party/**
-    - build/**
-    - android/**
-    - windows/**

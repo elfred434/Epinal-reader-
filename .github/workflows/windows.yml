@@ -1,91 +1,53 @@
-name: Construire et publier Épinal Windows
+name: Tester Épinal Windows natif expérimental
 on:
   push:
     branches: [windows]
   workflow_dispatch:
 permissions:
-  contents: write
-concurrency:
-  group: epinal-windows-release
-  cancel-in-progress: false
+  contents: read
 jobs:
-  windows:
+  native:
     runs-on: windows-2022
-    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
-      - uses: NuGet/setup-nuget@v2
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          flutter-version: '3.47.9'
-          channel: stable
-          cache: true
-      - name: Définir une version Windows indépendante
+          dotnet-version: 8.0.x
+      - name: Tester le cœur et les copies EPUB
+        run: dotnet run --project native_windows/Epinal.Core.Tests/Epinal.Core.Tests.csproj --configuration Release
+      - name: Vérifier le JavaScript
+        run: node --check native_windows/Epinal.Windows/Reader/reader.js
+      - name: Compiler la version expérimentale
+        run: dotnet publish native_windows/Epinal.Windows/Epinal.Windows.csproj -c Release -r win-x64 --self-contained true -o native_windows/publish
+      - name: Compiler le programme d’installation séparé
         shell: pwsh
         run: |
-          # v1.0.27 was the last shared release; 1.0.28 was the test fix.
-          $build = 28 + [int]$env:GITHUB_RUN_NUMBER
-          if ($build -gt 65535) { throw 'Numéro de version Windows trop grand.' }
-          "WINDOWS_BUILD=$build" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Préparer et vérifier le code
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" native_windows/installer/experimental.iss
+          if ($LASTEXITCODE -ne 0) { throw 'La compilation Inno Setup a échoué.' }
+      - name: Tester installation et démarrage
         shell: pwsh
         run: |
-          flutter pub get
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          flutter analyze
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          flutter test test/windows_support_test.dart
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Tester le pont WebView2 et le lecteur EPUB
-        timeout-minutes: 15
-        shell: pwsh
-        run: |
-          flutter test integration_test/windows_bridge_regression_test.dart -d windows 2>&1 | Tee-Object -FilePath bridge-test.log
-          $exitCode = $LASTEXITCODE
-          $log = Get-Content bridge-test.log -Raw
-          $passed = $log -match 'EPINAL_NULL_REPLY_OK' -and ($log -match 'Passing tests' -or $log -match '1 test passed')
-          $failed = $log -match 'Test failed\.|EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK|[0-9]+ tests? failed|Lost connection to device'
-          if (!$passed -or $failed) { throw "Le test du lecteur et du pont JavaScript a échoué." }
-          if ($exitCode -ne 0) {
-            $cleanup = $log -match 'No tests were found' -and $log -match '0 tests passed'
-            if (!$cleanup) { exit $exitCode }
-            Write-Warning 'Test réussi ; erreur Flutter connue lors du nettoyage des fichiers temporaires.'
-            $global:LASTEXITCODE = 0
-          }
-      - name: Compiler Windows
-        shell: pwsh
-        run: |
-          flutter build windows --release --build-name="1.0.$env:WINDOWS_BUILD" --build-number="$env:WINDOWS_BUILD"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Créer l’archive Windows
-        shell: pwsh
-        run: |
-          $directory = 'build/windows/x64/runner/Release'
-          if (!(Test-Path "$directory/Epinal.exe")) { throw 'Exécutable Windows absent.' }
-          if (!(Test-Path "$directory/flutter_windows.dll")) { throw 'Moteur Flutter absent.' }
-          if (!(Test-Path "$directory/data/flutter_assets")) { throw 'Ressources Flutter absentes.' }
-          Compress-Archive -Path "$directory/*" -DestinationPath 'Epinal-Windows-x64.zip' -CompressionLevel Optimal
-      - name: Construire et tester le programme d’installation
-        shell: pwsh
-        run: |
-          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-          if (!(Test-Path $iscc)) { throw 'Inno Setup 6 introuvable.' }
-          & $iscc "/DAppVersion=1.0.$env:WINDOWS_BUILD" installer/epinal.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./installer/test-installer.ps1
+          $setup = Join-Path $PWD 'native_windows/installer/Epinal-Native-Experimental-Setup-x64.exe'
+          $install = Join-Path $env:RUNNER_TEMP 'Epinal-Native-Experimental'
+          $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$install`"" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "Installation impossible ($($installer.ExitCode))." }
+          $app = Join-Path $install 'Epinal.Native.Experimental.exe'
+          if (-not (Test-Path $app)) { throw 'Exécutable manquant.' }
+          $proc = Start-Process -FilePath $app -WorkingDirectory $install -PassThru
+          Start-Sleep -Seconds 15
+          $proc.Refresh()
+          if ($proc.HasExited) { throw "L’application s’est arrêtée au démarrage ($($proc.ExitCode))." }
+          Stop-Process -Id $proc.Id -Force
+          # A separate clean app profile, exercising real EPUB rendering in WebView2.
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'EpinalNativeSmokeProfile'
+          $env:EPINAL_SMOKE_EPUB = Join-Path $PWD 'native_windows/Epinal.Core.Tests/Fixtures/with_cover.epub'
+          $env:EPINAL_SMOKE_LOG = Join-Path $env:RUNNER_TEMP 'epinal-native-smoke.txt'
+          $smoke = Start-Process -FilePath $app -WorkingDirectory $install -PassThru -Wait
+          if (Test-Path $env:EPINAL_SMOKE_LOG) { Get-Content $env:EPINAL_SMOKE_LOG }
+          if ($smoke.ExitCode -ne 0) { throw "Test EPUB WebView2 impossible ($($smoke.ExitCode))." }
+          if (-not (Select-String -Path $env:EPINAL_SMOKE_LOG -Pattern 'OK: EPUB affiché' -Quiet)) { throw 'Confirmation du lecteur manquante.' }
       - uses: actions/upload-artifact@v4
         with:
-          name: Epinal-Windows-x64
-          path: |
-            Epinal-Setup-x64.exe
-            Epinal-Windows-x64.zip
-          if-no-files-found: error
-          retention-days: 90
-      - name: Publier la version Windows sans modifier latest Android
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "windows-v1.0.$env:WINDOWS_BUILD"
-          gh release create $tag Epinal-Setup-x64.exe Epinal-Windows-x64.zip --target "$env:GITHUB_SHA" --title "Épinal Windows 1.0.$env:WINDOWS_BUILD" --notes "Version Windows indépendante. Installez-la par-dessus votre version Windows existante. Android n'est pas modifié." --latest=false
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          name: epinal-windows-native-experimental
+          path: native_windows/installer/Epinal-Native-Experimental-Setup-x64.exe
+          retention-days: 7

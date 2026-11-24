@@ -255,7 +255,7 @@ public partial class MainWindow : Window
                 string? input = null;
                 if (action != "delete") { input = Prompt(action == "create" ? "Nouvelle catégorie" : "Renommer la catégorie", "Nom :", action == "create" ? "" : oldName); if (input is null) continue; input = CleanCategory(input); }
                 if (action == "delete" && MessageBox.Show(this, $"Supprimer la catégorie « {oldName} » de tous les livres ?", "Confirmation", MessageBoxButton.YesNo) != MessageBoxResult.Yes) continue;
-                if (input is not null && library.Categories.Any(c => c.Equals(input, StringComparison.OrdinalIgnoreCase) && !c.Equals(oldName, StringComparison.Ordinal))) { MessageBox.Show(this, "Cette catégorie existe déjà."); continue; }
+                if (input is not null && library.Categories.Any(c => c.Equals(input, StringComparison.OrdinalIgnoreCase) && !(action == "rename" && c.Equals(oldName, StringComparison.Ordinal)))) { MessageBox.Show(this, "Cette catégorie existe déjà."); continue; }
                 var previousCategories = library.Categories.ToList(); var previousBooks = library.Books.Select(b => b.Categories.ToList()).ToList();
                 try
                 {
@@ -320,6 +320,7 @@ public partial class MainWindow : Window
                     book.Highlights.RemoveAt(index);
                     try { await library.SaveAsync(); } catch { book.Highlights.Insert(index, item); throw; }
                     await Script("removeHighlight(" + JsonSerializer.Serialize(item.Cfi) + ")");
+                    if (book.Highlights.Any(x => x.Cfi == item.Cfi)) await Script("addHighlight(" + JsonSerializer.Serialize(item.Cfi) + ")");
                 }
             }
         }

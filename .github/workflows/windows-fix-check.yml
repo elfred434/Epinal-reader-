@@ -20,6 +20,7 @@ jobs:
       - name: Dépendances
         run: flutter pub get
       - name: Test de non-régression Windows
+        timeout-minutes: 8
         shell: pwsh
         run: |
           flutter test integration_test/windows_bridge_regression_test.dart -d windows 2>&1 | Tee-Object -FilePath bridge-test.log

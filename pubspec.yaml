@@ -22,6 +22,12 @@ dependencies:
   package_info_plus: ^8.3.0
   flutter_tts: ^4.2.3
 
+# Windows-only fork of 0.7.0-beta.3: avoids dereferencing a null JS reply.
+# Android and other platform implementations remain the published packages.
+dependency_overrides:
+  flutter_inappwebview_windows:
+    path: third_party/flutter_inappwebview_windows
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

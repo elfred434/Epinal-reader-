@@ -89,3 +89,10 @@ Pour reprendre le même livre sur Android ou Windows sans compte ni serveur :
 3. Sur l’appareil destinataire, importez le même EPUB si nécessaire. Sur ce livre, choisissez **⋮ → Transférer la position → Recevoir un code**, collez le code et touchez **Appliquer**. Ouvrez le livre pour reprendre à la position reçue.
 
 Le code contient un repère EPUB précis, un pourcentage et l’empreinte SHA-256 du fichier, mais ne contient pas le livre. Les fichiers doivent être exactement identiques octet pour octet ; deux éditions ayant le même titre ou des fichiers EPUB reconditionnés peuvent être refusés. Pour un livre complété, exportez l’édition mise à jour et utilisez cette même copie sur l’autre appareil. En cas d’erreur ou de différence, la position existante n’est pas remplacée. Ce transfert manuel ne synchronise pas les annotations, signets, catégories ni modifications futures et ne vérifie pas l’identité de l’expéditeur ; acceptez seulement les codes de confiance.
+
+## Versions Android et Windows indépendantes
+
+- La branche `main` construit et publie Android sous un tag `v1.0.N` ; elle ne construit plus Windows.
+- La branche `windows` construit et publie Windows sous un tag `windows-v1.0.N` ; les changements Windows ne déclenchent pas de build Android.
+- La release Windows ne modifie pas le `latest` utilisé par Android. À partir de la première version issue de la branche Windows, le lecteur Windows recherche ses propres releases stables. Installez une première fois cette version Windows manuellement.
+- La branche expérimentale native C# reste séparée. Les changements communs doivent être reportés et vérifiés explicitement dans chaque branche concernée.

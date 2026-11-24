@@ -20,6 +20,17 @@ public partial class MainWindow : Window
     private int size = 100;
     private string? selectionCfi, selectionText;
     private bool ready;
+    private readonly string? smokeBook = Environment.GetEnvironmentVariable("EPINAL_SMOKE_EPUB");
+    private readonly string? smokeLog = Environment.GetEnvironmentVariable("EPINAL_SMOKE_LOG");
+    private bool smokeDisplayed, smokePosition, smokeToc;
+    private System.Windows.Threading.DispatcherTimer? smokeTimer;
+    private void SmokeLog(string message) { if (!string.IsNullOrEmpty(smokeLog)) File.AppendAllText(smokeLog, message + Environment.NewLine); }
+    private void CheckSmoke()
+    {
+        if (string.IsNullOrEmpty(smokeBook) || !smokeDisplayed || !smokePosition || !smokeToc) return;
+        SmokeLog("OK: EPUB affiché, sommaire et position reçus");
+        smokeTimer?.Stop(); Application.Current.Shutdown(0);
+    }
 
     public MainWindow()
     {
@@ -29,6 +40,12 @@ public partial class MainWindow : Window
     }
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (!string.IsNullOrEmpty(smokeBook))
+        {
+            smokeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(90) };
+            smokeTimer.Tick += (_, _) => { SmokeLog("Délai dépassé : EPUB non chargé"); smokeTimer.Stop(); Application.Current.Shutdown(2); };
+            smokeTimer.Start();
+        }
         try
         {
             await library.LoadAsync();
@@ -47,8 +64,9 @@ public partial class MainWindow : Window
             web.WebMessageReceived += HandleMessage;
             ready = true;
             Status.Text = "Prototype expérimental : vos données Flutter ne sont pas modifiées.";
+            if (!string.IsNullOrEmpty(smokeBook)) { SmokeLog("Initialisation OK"); var book = await library.ImportAsync(smokeBook); Open(book); }
         }
-        catch (Exception ex) { Error("Initialisation impossible", ex); }
+        catch (Exception ex) { if (!string.IsNullOrEmpty(smokeBook)) { SmokeLog("Initialisation : " + ex); Application.Current.Shutdown(2); } else Error("Initialisation impossible", ex); }
     }
     private void HandleResource(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
     {
@@ -92,6 +110,7 @@ public partial class MainWindow : Window
                 current.Cfi = cfi; current.Progress = value;
                 Progress.Text = $"{value:P0}";
                 await library.SaveAsync();
+                smokePosition = true; CheckSmoke();
             }
             else if (type == "speak")
             {
@@ -101,6 +120,7 @@ public partial class MainWindow : Window
             else if (type == "displayed" && current is not null)
             {
                 foreach (var highlight in current.Highlights) await Script("addHighlight(" + JsonSerializer.Serialize(highlight.Cfi) + ")");
+                smokeDisplayed = true; CheckSmoke();
             }
             else if (type == "selection")
             {
@@ -116,10 +136,13 @@ public partial class MainWindow : Window
                 if (value is not null) await Script("goTo(" + JsonSerializer.Serialize(value) + ")");
             }
             else if (type == "toc")
+            {
                 toc = root.GetProperty("data").EnumerateArray().Select(x => (x.GetProperty("label").GetString() ?? "", x.GetProperty("href").GetString() ?? "")).ToList();
-            else if (type == "error") Status.Text = "Lecteur : " + root.GetProperty("data").GetString();
+                smokeToc = toc.Count > 0; CheckSmoke();
+            }
+            else if (type == "error") { Status.Text = "Lecteur : " + root.GetProperty("data").GetString(); SmokeLog(Status.Text); }
         }
-        catch (Exception ex) { Status.Text = "Erreur du lecteur : " + ex.Message; }
+        catch (Exception ex) { Status.Text = "Erreur du lecteur : " + ex.Message; SmokeLog(Status.Text); }
     }
     private void Refresh()
     {

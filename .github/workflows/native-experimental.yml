@@ -38,6 +38,14 @@ jobs:
           $proc.Refresh()
           if ($proc.HasExited) { throw "L’application s’est arrêtée au démarrage ($($proc.ExitCode))." }
           Stop-Process -Id $proc.Id -Force
+          # A separate clean app profile, exercising real EPUB rendering in WebView2.
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'EpinalNativeSmokeProfile'
+          $env:EPINAL_SMOKE_EPUB = Join-Path $PWD 'test/fixtures/with_cover.epub'
+          $env:EPINAL_SMOKE_LOG = Join-Path $env:RUNNER_TEMP 'epinal-native-smoke.txt'
+          $smoke = Start-Process -FilePath $app -WorkingDirectory $install -PassThru -Wait
+          if (Test-Path $env:EPINAL_SMOKE_LOG) { Get-Content $env:EPINAL_SMOKE_LOG }
+          if ($smoke.ExitCode -ne 0) { throw "Test EPUB WebView2 impossible ($($smoke.ExitCode))." }
+          if (-not (Select-String -Path $env:EPINAL_SMOKE_LOG -Pattern 'OK: EPUB affiché' -Quiet)) { throw 'Confirmation du lecteur manquante.' }
       - uses: actions/upload-artifact@v4
         with:
           name: epinal-windows-native-experimental

@@ -71,21 +71,62 @@ try
     var original = await File.ReadAllBytesAsync(selected);
     var added = await local.ImportAsync(selected);
     Check(await File.ReadAllBytesAsync(local.BookPath(added)) is var internalBytes && internalBytes.SequenceEqual(original), "Imported book is an independent copy");
+    Check(File.Exists(local.CoverPath(added)), "Original EPUB cover extracted");
+    var originalCover = await File.ReadAllBytesAsync(local.CoverPath(added));
+    await local.SetCoverAsync(added, new byte[] { 1, 2, 3 });
+    Check(await local.RestoreCoverAsync(added) && (await File.ReadAllBytesAsync(local.CoverPath(added))).SequenceEqual(originalCover), "Original cover restored");
+    local.Categories.Add("Vide");
+    await local.SaveAsync();
     Check((await local.ImportAsync(selected)).Id == added.Id && local.Books.Count == 1, "Duplicate import");
     File.Delete(selected);
     Check(File.Exists(local.BookPath(added)), "Source may be removed after import");
     added.Cfi = "epubcfi(/6/2)"; added.Progress = .2; added.Highlights.Add(new NativeHighlight { Cfi = "epubcfi(/6/2)", Text = "passage", Note = "note" });
     await local.SaveAsync();
     var reloaded = new NativeLibrary(local.Root); await reloaded.LoadAsync();
+    Check(reloaded.Categories.Contains("Vide"), "Empty category survives reload");
     Check(reloaded.Books.Count == 1 && reloaded.Books[0].Cfi == added.Cfi && reloaded.Books[0].Highlights[0].Note == "note", "Library reload retains position and notes");
     var invalid = Path.Combine(temp, "invalid.epub"); await File.WriteAllTextAsync(invalid, "invalid");
     try { await local.ImportAsync(invalid); throw new Exception("Invalid EPUB accepted"); } catch (InvalidDataException) { }
     Check(local.Books.Count == 1, "Invalid import does not alter library");
     var incoming = Path.Combine(temp, "suite.epub"); File.WriteAllBytes(incoming, original); ExtendEpub(incoming);
     var badIncoming = Path.Combine(temp, "suite-modifiee.epub"); File.WriteAllBytes(badIncoming, original); ExtendEpub(badIncoming, true);
-    Fails(() => AppendEdition.Compare(local.BookPath(added), badIncoming));
+    var changed = AppendEdition.Compare(local.BookPath(added), badIncoming);
+    Check(changed.Conflicts.Count == 1 && changed.Conflicts[0].IsChapter && changed.AddedSections == 1, "Changed chapter offered for review");
+    try { await AppendEdition.ApplyAsync(local, added, badIncoming, changed); throw new Exception("Missing choice accepted"); } catch (FormatException) { }
+    Check((await File.ReadAllBytesAsync(local.BookPath(added))).SequenceEqual(original), "Missing choice leaves book untouched");
+    await AppendEdition.ApplyAsync(local, added, badIncoming, changed, new Dictionary<string, bool> { [changed.Conflicts[0].Path] = true });
+    using (var result = ZipFile.OpenRead(local.BookPath(added)))
+    using (var originalZip = ZipFile.OpenRead(badIncoming))
+    {
+        Check(result.GetEntry("OEBPS/extra.xhtml") is not null, "New chapter retained with old chapter choice");
+        using var chosen = new StreamReader(result.GetEntry(changed.Conflicts[0].Path)!.Open());
+        Check(!(await chosen.ReadToEndAsync()).Contains("modifié"), "Old chapter retained");
+    }
+    await AppendEdition.RestoreAsync(local, added);
+    changed = AppendEdition.Compare(local.BookPath(added), badIncoming);
+    await AppendEdition.ApplyAsync(local, added, badIncoming, changed, new Dictionary<string, bool> { [changed.Conflicts[0].Path] = false });
+    using (var result = ZipFile.OpenRead(local.BookPath(added)))
+    using (var chosen = new StreamReader(result.GetEntry(changed.Conflicts[0].Path)!.Open()))
+        Check((await chosen.ReadToEndAsync()).Contains("modifié"), "New chapter accepted");
+    await AppendEdition.RestoreAsync(local, added);
+    var resourceIncoming = Path.Combine(temp, "suite-ressource.epub"); File.WriteAllBytes(resourceIncoming, original); ExtendEpub(resourceIncoming, true);
+    using (var zip = ZipFile.Open(resourceIncoming, ZipArchiveMode.Update)) { zip.GetEntry("OEBPS/cover.png")!.Delete(); using var writer = zip.CreateEntry("OEBPS/cover.png").Open(); writer.Write(new byte[] { 1, 2, 3 }); }
+    var mixed = AppendEdition.Compare(local.BookPath(added), resourceIncoming);
+    Check(mixed.Conflicts.Count == 2 && mixed.Conflicts.Any(x => !x.IsChapter), "All changed resources require independent choices");
+    var decisions = mixed.Conflicts.ToDictionary(x => x.Path, x => x.IsChapter);
+    await AppendEdition.ApplyAsync(local, added, resourceIncoming, mixed, decisions);
+    using (var zip = ZipFile.OpenRead(local.BookPath(added)))
+    {
+        using var cover = zip.GetEntry("OEBPS/cover.png")!.Open(); using var memory = new MemoryStream(); cover.CopyTo(memory);
+        Check(memory.ToArray().SequenceEqual(new byte[] { 1, 2, 3 }), "Resource choice applied independently");
+    }
+    await AppendEdition.RestoreAsync(local, added);
     var duplicateIncoming = Path.Combine(temp, "suite-dupliquee.epub"); File.WriteAllBytes(duplicateIncoming, original); ExtendEpub(duplicateIncoming, duplicate: true);
     Fails(() => AppendEdition.Compare(local.BookPath(added), duplicateIncoming));
+    var stale = AppendEdition.Compare(local.BookPath(added), badIncoming);
+    await File.AppendAllTextAsync(badIncoming, "changed");
+    try { await AppendEdition.ApplyAsync(local, added, badIncoming, stale, new Dictionary<string, bool> { [stale.Conflicts[0].Path] = false }); throw new Exception("Changed source accepted"); } catch (IOException) { }
+    Check((await File.ReadAllBytesAsync(local.BookPath(added))).SequenceEqual(original), "Stale comparison leaves book intact");
     var comparison = AppendEdition.Compare(local.BookPath(added), incoming);
     Check(comparison.AddedSections == 1, "One section added");
     var incomingBytes = await File.ReadAllBytesAsync(incoming);
@@ -101,10 +142,15 @@ try
     await File.WriteAllBytesAsync(Path.Combine(oldProfile, "books", "a.previous.epub"), original);
     var backupHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(original)).ToLowerInvariant();
     var backupState = System.Text.Json.JsonSerializer.Serialize(new { sha256 = backupHash, cfi = "epubcfi(/6/2)", progress = 0.35 });
-    var prefsReal = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object> { ["flutter.library.v2"] = legacyBooks, ["flutter.categories.v1"] = new[] { "Romans" }, ["flutter.edition.backup.a"] = backupState, ["flutter.marks.a"] = "[{\"cfi\":\"epubcfi(/6/2)\"}]", ["flutter.highlights.a"] = "[{\"cfi\":\"epubcfi(/6/2)\",\"text\":\"Passage\",\"note\":\"Note\"}]" });
+    var prefsReal = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object> { ["flutter.library.v2"] = legacyBooks, ["flutter.categories.v1"] = new[] { "Romans" }, ["flutter.reader.font"] = 24, ["flutter.reader.theme"] = 3, ["flutter.reader.mode"] = "longStrip", ["flutter.edition.backup.a"] = backupState, ["flutter.marks.a"] = "[{\"cfi\":\"epubcfi(/6/2)\"}]", ["flutter.highlights.a"] = "[{\"cfi\":\"epubcfi(/6/2)\",\"text\":\"Passage\",\"note\":\"Note\"}]" });
     await File.WriteAllTextAsync(Path.Combine(oldProfile, "shared_preferences.json"), prefsReal);
     var migrated = new NativeLibrary(Path.Combine(temp, "native-migrated")); await migrated.LoadAsync();
     var backup = await LegacyMigration.ImportAsync(migrated, oldProfile);
+    var readerPrefs = await ReaderPreferences.LoadAsync(migrated.Root);
+    Check(readerPrefs.FontPercent == 133 && readerPrefs.Theme == 3 && readerPrefs.Scrolling, "Migration transfers supported reading settings");
+    readerPrefs.RecentBookId = "a"; await readerPrefs.SaveAsync(migrated.Root);
+    Check((await ReaderPreferences.LoadAsync(migrated.Root)).RecentBookId == "a", "Recent book persisted");
+    Check(migrated.Categories.Contains("Romans"), "Migration retains categories");
     Check(migrated.Books.Count == 1 && migrated.Books[0].Bookmarks.Count == 1 && migrated.Books[0].Highlights[0].Note == "Note", "Migration transfers marks and notes");
     Check((await File.ReadAllBytesAsync(migrated.BookPath(migrated.Books[0]))).SequenceEqual(original), "Migration copies EPUB");
     Check(File.Exists(migrated.BookPath(migrated.Books[0]) + ".previous"), "Migration transfers previous edition");

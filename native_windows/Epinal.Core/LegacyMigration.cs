@@ -68,10 +68,19 @@ public static class LegacyMigration
             // Every book and metadata was validated before touching the native index.
             Directory.Delete(library.BooksPath); Directory.Move(stage, library.BooksPath);
             library.Books.AddRange(converted);
-            try { await library.SaveAsync(); }
+            var previousCategories = library.Categories.ToList();
+            foreach (var category in old.Categories.Concat(converted.SelectMany(x => x.Categories)))
+                if (!library.Categories.Contains(category, StringComparer.OrdinalIgnoreCase)) library.Categories.Add(category);
+            try
+            {
+                var preferences = ReaderPreferences.FromFlutter(prefs.RootElement);
+                await preferences.SaveAsync(library.Root);
+                await library.SaveAsync();
+            }
             catch
             {
                 library.Books.Clear();
+                library.Categories.Clear(); library.Categories.AddRange(previousCategories);
                 Directory.Delete(library.BooksPath, true); Directory.CreateDirectory(library.BooksPath);
                 throw;
             }

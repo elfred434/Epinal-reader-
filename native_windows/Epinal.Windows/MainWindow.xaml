@@ -4,7 +4,7 @@
     <DockPanel Grid.Row="0" Margin="0,0,0,10">
       <TextBlock DockPanel.Dock="Left" Text="Épinal" FontSize="27" FontWeight="SemiBold" Foreground="#315D49" VerticalAlignment="Center" Margin="4,0,20,0"/>
       <WrapPanel HorizontalAlignment="Right">
-        <Button Content="Importer un EPUB" Click="ImportClick"/><Button Content="Ajouter la suite" Click="AppendClick"/><Button Content="Rétablir" Click="RestoreClick"/><Button Content="Reprendre" Click="ResumeClick"/><Button Content="Ancienne bibliothèque" Click="MigrateClick"/><Button Content="Mises à jour" Click="UpdateClick"/>
+        <Button Content="Importer un EPUB" Click="ImportClick"/><Button Content="Ajouter la suite" Click="AppendClick"/><Button Content="Rétablir" Click="RestoreClick"/><Button Content="Reprendre" Click="ResumeClick"/><Button Content="Ancienne bibliothèque" Click="MigrateClick"/><Button Content="Catégories" Click="ManageCategoriesClick"/><Button Content="Mises à jour" Click="UpdateClick"/>
       </WrapPanel>
     </DockPanel>
     <Grid Grid.Row="1">
@@ -13,8 +13,8 @@
         <DockPanel>
           <TextBox x:Name="Filter" DockPanel.Dock="Top" ToolTip="Chercher dans la bibliothèque" TextChanged="FilterChanged"/>
           <TextBlock DockPanel.Dock="Top" Text="BIBLIOTHÈQUE" Foreground="#63756B" FontWeight="SemiBold" Margin="5,8"/>
-          <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"><Button Content="Ouvrir" Click="OpenClick"/><Button Content="Exporter" Click="ExportClick"/><Button Content="Supprimer" Click="DeleteClick"/><Button Content="Classer" Click="CategoriesClick"/></StackPanel>
-          <ListBox x:Name="BooksList" MouseDoubleClick="OpenClick" DisplayMemberPath="Title" BorderThickness="0"/>
+          <StackPanel DockPanel.Dock="Bottom"><Image x:Name="CoverPreview" Height="120" Stretch="Uniform" Margin="3"/><WrapPanel HorizontalAlignment="Center"><Button Content="Couverture" Click="CoverClick"/><Button Content="Couverture d’origine" Click="RestoreCoverClick"/></WrapPanel><StackPanel Orientation="Horizontal"><Button Content="Ouvrir" Click="OpenClick"/><Button Content="Exporter" Click="ExportClick"/><Button Content="Supprimer" Click="DeleteClick"/><Button Content="Classer" Click="CategoriesClick"/></StackPanel></StackPanel>
+          <ListBox x:Name="BooksList" SelectionChanged="BookSelectionChanged" MouseDoubleClick="OpenClick" DisplayMemberPath="Title" BorderThickness="0"/>
         </DockPanel>
       </Border>
       <Border Grid.Column="2" Background="White" BorderBrush="#D8DFD7" BorderThickness="1" CornerRadius="8" Padding="8">

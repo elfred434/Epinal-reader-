@@ -2,11 +2,11 @@
 let book, rendition, currentLocation = '', currentProgress = 0;
 function notify(type, data) { window.chrome.webview.postMessage({type, data}); }
 function fail(error) { document.getElementById('message').textContent = 'Impossible d’ouvrir cet EPUB.'; notify('error', String(error && error.message || error)); }
-async function openBook(cfi, progress) {
+async function openBook(cfi, progress, size=100, theme=0, scrolling=false) {
   currentProgress = Number.isFinite(progress) ? progress : 0;
   try {
     book = ePub('https://epinal.local/book.epub');
-    rendition = book.renderTo('viewer', { width: '100%', height: '100%', flow: 'paginated', spread: 'none', allowScriptedContent: false });
+    rendition = book.renderTo('viewer', { width: '100%', height: '100%', flow: scrolling ? 'scrolled-doc' : 'paginated', spread: 'none', allowScriptedContent: false });
     rendition.on('relocated', loc => {
       currentLocation = loc.start.cfi;
       if (book.locations.total > 0) currentProgress = Math.max(0, Math.min(1, book.locations.percentageFromCfi(currentLocation) || 0));
@@ -19,6 +19,7 @@ async function openBook(cfi, progress) {
     await book.ready;
     const flatten = (items, depth=0) => items.flatMap(x => [{label: '　'.repeat(depth) + x.label.trim(), href: x.href}, ...flatten(x.subitems || [], depth+1)]);
     notify('toc', flatten(book.navigation.toc || []));
+    fontSize(size); setTheme(theme);
     await rendition.display(cfi || undefined);
     document.getElementById('message').textContent = '';
     notify('displayed', null);
@@ -46,6 +47,8 @@ window.chrome.webview.postMessage({type:'ready'});
 
 function addHighlight(cfi){ if(rendition) rendition.annotations.highlight(cfi, {}, null, 'epinal-highlight', {'fill':'#f3c957','fill-opacity':'0.4','mix-blend-mode':'multiply'}); }
 
+function removeHighlight(cfi){ if(rendition) rendition.annotations.remove(cfi, 'highlight'); }
+
 function setFlow(mode){ if(rendition) rendition.flow(mode); }
-function setTheme(dark){ if(rendition) { rendition.themes.default({body:{'background':dark?'#202923':'#fff','color':dark?'#e5eee6':'#233b2d'}}); document.body.style.background = dark?'#202923':'#f5f6ef'; } }
+function setTheme(theme){ if(rendition) { const colors = [['#ffffff','#233b2d'],['#f4ecd9','#43372a'],['#202923','#e5eee6'],['#e9e4ce','#343a2e']][theme] || ['#ffffff','#233b2d']; rendition.themes.default({body:{'background':colors[0], 'color':colors[1], 'line-height':theme===3?'1.7':'normal'}}); document.body.style.background = colors[0]; } }
 function readPage(){ if(!rendition) return; const contents = rendition.getContents(); const text = contents.map(c => c.document && c.document.body ? c.document.body.innerText : '').join(' ').slice(0,20000); notify('speak',text); }

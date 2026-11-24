@@ -31,6 +31,8 @@ public sealed class NativeLibrary
     public string BooksPath => Path.Combine(Root, "books");
     private string IndexPath => Path.Combine(Root, "library.json");
     public List<NativeBook> Books { get; private set; } = [];
+    public List<string> Categories { get; private set; } = [];
+    private sealed class LibraryIndex { public List<NativeBook> Books { get; set; } = []; public List<string> Categories { get; set; } = []; }
     private readonly SemaphoreSlim saveLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     public NativeLibrary(string root) => Root = Path.GetFullPath(root);
@@ -39,6 +41,7 @@ public sealed class NativeLibrary
         ValidateId(book.Id);
         return Path.Combine(BooksPath, book.Id + ".epub");
     }
+    public string CoverPath(NativeBook book) { ValidateId(book.Id); return Path.Combine(BooksPath, book.Id + ".jpg"); }
     private static void ValidateId(string id)
     {
         if (id.Length is < 1 or > 128 || id.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-'))
@@ -48,7 +51,19 @@ public sealed class NativeLibrary
     {
         Directory.CreateDirectory(BooksPath);
         if (!File.Exists(IndexPath)) { Books = []; return; }
-        var books = JsonSerializer.Deserialize<List<NativeBook>>(await File.ReadAllTextAsync(IndexPath), JsonOptions) ?? throw new FormatException("Bibliothèque illisible.");
+        var json = await File.ReadAllTextAsync(IndexPath);
+        using var document = JsonDocument.Parse(json);
+        LibraryIndex index;
+        if (document.RootElement.ValueKind == JsonValueKind.Array)
+            index = new LibraryIndex { Books = JsonSerializer.Deserialize<List<NativeBook>>(json, JsonOptions) ?? throw new FormatException("Bibliothèque illisible.") };
+        else
+            index = JsonSerializer.Deserialize<LibraryIndex>(json, JsonOptions) ?? throw new FormatException("Bibliothèque illisible.");
+        var books = index.Books ?? throw new FormatException("Bibliothèque illisible.");
+        var categories = index.Categories ?? throw new FormatException("Catégories illisibles.");
+        foreach (var category in books.SelectMany(b => b.Categories))
+            if (!categories.Contains(category, StringComparer.OrdinalIgnoreCase)) categories.Add(category);
+        if (categories.Any(c => string.IsNullOrWhiteSpace(c) || c.Length > 40) || categories.Distinct(StringComparer.OrdinalIgnoreCase).Count() != categories.Count)
+            throw new FormatException("Catégories invalides.");
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in books)
         {
@@ -56,7 +71,7 @@ public sealed class NativeLibrary
             if (!ids.Add(b.Id)) throw new FormatException("Identifiants de livres en double.");
             if (!double.IsFinite(b.Progress) || b.Progress is < 0 or > 1) throw new FormatException("Progression invalide.");
         }
-        Books = books;
+        Books = books; Categories = categories;
     }
     public async Task SaveAsync()
     {
@@ -67,7 +82,7 @@ public sealed class NativeLibrary
             var stage = IndexPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                await File.WriteAllTextAsync(stage, JsonSerializer.Serialize(Books, JsonOptions));
+                await File.WriteAllTextAsync(stage, JsonSerializer.Serialize(new LibraryIndex { Books = Books, Categories = Categories }, JsonOptions));
                 File.Move(stage, IndexPath, true);
             }
             finally { if (File.Exists(stage)) File.Delete(stage); }
@@ -92,11 +107,17 @@ public sealed class NativeLibrary
             if (existing is not null) return existing;
             var book = new NativeBook { Id = id, Title = title, Author = author };
             var path = BookPath(book);
-            if (File.Exists(path)) throw new IOException("Un fichier portant cet identifiant existe déjà.");
+            if (File.Exists(path) || File.Exists(path + ".previous") || File.Exists(path + ".previous.json") || File.Exists(CoverPath(book)))
+                throw new IOException("Des fichiers internes existent déjà pour ce livre. Ils ont été conservés ; vérifiez la bibliothèque avant de réessayer.");
             File.Move(stage, path);
             Books.Insert(0, book);
-            try { await SaveAsync(); }
-            catch { Books.Remove(book); File.Delete(path); throw; }
+            try
+            {
+                var cover = ExtractCover(path);
+                if (cover is not null) await File.WriteAllBytesAsync(CoverPath(book), cover);
+                await SaveAsync();
+            }
+            catch { Books.Remove(book); File.Delete(path); if (File.Exists(CoverPath(book))) File.Delete(CoverPath(book)); throw; }
             return book;
         }
         finally { if (File.Exists(stage)) File.Delete(stage); }
@@ -122,6 +143,39 @@ public sealed class NativeLibrary
         var title = metadata.Elements().FirstOrDefault(x => x.Name.LocalName == "title")?.Value.Trim();
         var author = metadata.Elements().FirstOrDefault(x => x.Name.LocalName == "creator")?.Value.Trim();
         return (string.IsNullOrEmpty(title) ? "Livre sans titre" : title, author ?? "");
+    }
+    public static byte[]? ExtractCover(string path)
+    {
+        using var archive = ZipFile.OpenRead(path);
+        var container = ReadXml(archive.GetEntry("META-INF/container.xml") ?? throw new FormatException("Conteneur EPUB manquant."));
+        var opfPath = container.Descendants().FirstOrDefault(x => x.Name.LocalName == "rootfile")?.Attribute("full-path")?.Value ?? throw new FormatException("Conteneur invalide.");
+        var opf = ReadXml(archive.GetEntry(opfPath) ?? throw new FormatException("Métadonnées EPUB manquantes."));
+        var coverId = opf.Descendants().FirstOrDefault(x => x.Name.LocalName == "meta" && x.Attribute("name")?.Value == "cover")?.Attribute("content")?.Value;
+        var item = opf.Descendants().Where(x => x.Name.LocalName == "item").FirstOrDefault(x => (x.Attribute("properties")?.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("cover-image") ?? false) || (coverId is not null && x.Attribute("id")?.Value == coverId));
+        if (item is null || item.Attribute("media-type")?.Value is not ("image/jpeg" or "image/png" or "image/gif")) return null;
+        var href = item.Attribute("href")?.Value;
+        if (string.IsNullOrEmpty(href) || href.Contains('\\') || href.StartsWith('/') || href.Contains('?') || href.Contains('#') || Uri.TryCreate(href, UriKind.Absolute, out _)) return null;
+        try { href = Uri.UnescapeDataString(href); } catch (UriFormatException) { return null; }
+        if (href.Contains('\\') || href.Split('/').Any(x => x is ".." or ".")) return null;
+        var folder = opfPath.Contains('/') ? opfPath[..(opfPath.LastIndexOf('/') + 1)] : "";
+        var entry = archive.GetEntry(folder + href);
+        if (entry is null || entry.Length is <= 0 or > 10 * 1024 * 1024) return null;
+        using var input = entry.Open(); using var output = new MemoryStream(); input.CopyTo(output);
+        if (output.Length != entry.Length) throw new FormatException("Couverture invalide.");
+        return output.ToArray();
+    }
+    public async Task SetCoverAsync(NativeBook book, byte[] bytes)
+    {
+        if (bytes.Length is <= 0 or > 10 * 1024 * 1024) throw new FormatException("Couverture trop volumineuse.");
+        var path = CoverPath(book); var stage = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try { await File.WriteAllBytesAsync(stage, bytes); File.Move(stage, path, true); }
+        finally { if (File.Exists(stage)) File.Delete(stage); }
+    }
+    public async Task<bool> RestoreCoverAsync(NativeBook book)
+    {
+        var cover = ExtractCover(BookPath(book));
+        if (cover is null) { if (File.Exists(CoverPath(book))) File.Delete(CoverPath(book)); return false; }
+        await SetCoverAsync(book, cover); return true;
     }
     private static XDocument ReadXml(ZipArchiveEntry entry)
     {

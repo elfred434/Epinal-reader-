@@ -17,24 +17,80 @@ class AppUpdate {
 class Updater {
   static const api =
       'https://api.github.com/repos/elfred434/Epinal-reader-/releases/latest';
+  static const windowsApi =
+      'https://api.github.com/repos/elfred434/Epinal-reader-/releases';
   static const native = MethodChannel('com.epinal.reader/native');
   static Future<AppUpdate?> check() async {
+    final info = await PackageInfo.fromPlatform();
+    final installed = installedBuild(
+      info.version,
+      info.buildNumber,
+      windows: Platform.isWindows,
+    );
+    if (Platform.isWindows) {
+      final client = http.Client();
+      try {
+        return await checkWindowsReleases(client, installedBuild: installed);
+      } finally {
+        client.close();
+      }
+    }
+    // Android retains its existing stable `latest` release channel.
     final r = await http
         .get(Uri.parse(api), headers: {'Accept': 'application/vnd.github+json'})
         .timeout(const Duration(seconds: 20));
     if (r.statusCode == 404) return null;
-    if (r.statusCode != 200)
+    if (r.statusCode != 200) {
       throw Exception('GitHub indisponible (${r.statusCode}).');
-    final info = await PackageInfo.fromPlatform();
+    }
     return parseRelease(
       jsonDecode(r.body) as Map<String, dynamic>,
-      installedBuild: installedBuild(
-        info.version,
-        info.buildNumber,
-        windows: Platform.isWindows,
-      ),
-      windows: Platform.isWindows,
+      installedBuild: installed,
+      windows: false,
     );
+  }
+
+  /// Windows has independent releases and never changes Android's latest tag.
+  /// Scan bounded pages rather than assuming the latest GitHub release is
+  /// Windows; malformed matching releases fail closed instead of being ignored.
+  static Future<AppUpdate?> checkWindowsReleases(
+    http.Client client, {
+    required int installedBuild,
+  }) async {
+    Map<String, dynamic>? best;
+    var bestBuild = installedBuild;
+    for (var page = 1; page <= 10; page++) {
+      final response = await client
+          .get(
+            Uri.parse('$windowsApi?per_page=100&page=$page'),
+            headers: {'Accept': 'application/vnd.github+json'},
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 404) return null;
+      if (response.statusCode != 200) {
+        throw Exception('GitHub indisponible (${response.statusCode}).');
+      }
+      final items = jsonDecode(response.body) as List;
+      for (final item in items) {
+        if (item is! Map<String, dynamic> ||
+            item['draft'] == true ||
+            item['prerelease'] == true)
+          continue;
+        final tag = item['tag_name'];
+        if (tag is! String) continue;
+        final match = RegExp(r'^windows-v1\.0\.(\d+)$').firstMatch(tag);
+        if (match == null) continue;
+        final build = int.tryParse(match.group(1)!);
+        if (build != null && build > bestBuild) {
+          best = item;
+          bestBuild = build;
+        }
+      }
+      if (items.length < 100) break;
+    }
+    return best == null
+        ? null
+        : parseRelease(best, installedBuild: installedBuild, windows: true);
   }
 
   /// Windows VERSIONINFO contains a dotted product version without +build.
@@ -56,7 +112,11 @@ class Updater {
     required bool windows,
   }) {
     final version = j['tag_name'] as String? ?? '';
-    final match = RegExp(r'^v1\.0\.(\d+)$').firstMatch(version);
+    final match =
+        (windows
+                ? RegExp(r'^(?:windows-)?v1\.0\.(\d+)$')
+                : RegExp(r'^v1\.0\.(\d+)$'))
+            .firstMatch(version);
     if (match == null) throw Exception('Version GitHub non reconnue.');
     final build = int.parse(match.group(1)!);
     if (build <= installedBuild) return null;
@@ -85,7 +145,7 @@ class Updater {
   /// On Windows users download the setup from GitHub and confirm installation.
   static Future<void> openWindowsRelease(AppUpdate update) async {
     if (!Platform.isWindows) throw UnsupportedError('Windows uniquement');
-    // Version was validated against v1.0.NUMBER in parseRelease.
+    // The tag was validated against the Windows release pattern.
     final page =
         'https://github.com/elfred434/Epinal-reader-/releases/tag/${update.version}';
     await Process.start('explorer.exe', [page]);

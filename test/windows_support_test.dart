@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:epinal_reader/book_export.dart';
 import 'package:epinal_reader/update.dart';
 import 'package:flutter_epub_viewer/src/platform/windows_reader_assets.dart';
@@ -49,6 +52,68 @@ void main() {
       endsWith('Epinal.apk'),
     );
     expect(exportFileName('CON.epub'), 'Livre CON.epub');
+  });
+  test('canal Windows indépendant, Android et préversions ignorés', () async {
+    Map<String, dynamic> release(String tag, {bool prerelease = false}) => {
+      'tag_name': tag,
+      'draft': false,
+      'prerelease': prerelease,
+      'assets': [
+        {
+          'name': 'Epinal-Setup-x64.exe',
+          'browser_download_url':
+              'https://github.com/elfred434/Epinal-reader-/releases/download/$tag/Epinal-Setup-x64.exe',
+          'digest': 'sha256:${'a' * 64}',
+        },
+      ],
+    };
+    var requests = 0;
+    final client = MockClient((request) async {
+      requests++;
+      expect(request.url.queryParameters['page'], '$requests');
+      if (requests == 1) {
+        // A full first page ensures pagination is exercised.
+        return http.Response(
+          jsonEncode([
+            release('v1.0.900'),
+            release('windows-v1.0.99', prerelease: true),
+            release('windows-v1.0.29'),
+            ...List.generate(97, (_) => {'tag_name': 'unrelated'}),
+          ]),
+          200,
+        );
+      }
+      return http.Response(jsonEncode([release('windows-v1.0.30')]), 200);
+    });
+    try {
+      final update = await Updater.checkWindowsReleases(
+        client,
+        installedBuild: 27,
+      );
+      expect(update!.version, 'windows-v1.0.30');
+      expect(update.build, 30);
+      expect(requests, 2);
+      expect(update.asset.path, contains('/windows-v1.0.30/'));
+    } finally {
+      client.close();
+    }
+    final empty = MockClient(
+      (_) async => http.Response(
+        jsonEncode([
+          release('v1.0.100'),
+          release('windows-v1.0.30', prerelease: true),
+        ]),
+        200,
+      ),
+    );
+    try {
+      expect(
+        await Updater.checkWindowsReleases(empty, installedBuild: 27),
+        isNull,
+      );
+    } finally {
+      empty.close();
+    }
   });
   test(
     'serveur local livre uniquement les ressources attendues',

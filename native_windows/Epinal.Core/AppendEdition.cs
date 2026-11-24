@@ -69,6 +69,14 @@ public static class AppendEdition
             throw new FormatException("La suite doit prolonger les anciennes sections sans les réorganiser.");
         foreach (var (id, item) in old.Items)
             if (!incoming.Items.TryGetValue(id, out var next) || item != next) throw new FormatException("Une ressource a été déplacée ou supprimée.");
+        var sectionHashes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in incoming.Spine)
+        {
+            var section = newZip.GetEntry(incoming.Items[id].Href) ?? throw new FormatException("Une section de lecture est manquante.");
+            using var sectionStream = section.Open();
+            var sectionHash = Convert.ToHexString(SHA256.HashData(sectionStream));
+            if (!sectionHashes.Add(sectionHash)) throw new FormatException("Des sections identiques ont été détectées : comparaison refusée.");
+        }
         foreach (var entry in oldZip.Entries)
         {
             if (entry.FullName.EndsWith('/')) continue;

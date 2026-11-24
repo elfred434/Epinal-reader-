@@ -7,7 +7,7 @@ static void Check(bool value, string message) { if (!value) throw new Exception(
 static void Fails(Action action) { try { action(); } catch (FormatException) { return; } throw new Exception("FormatException expected"); }
 static async Task FailsAsync(Func<Task> action) { try { await action(); } catch (Exception e) when (e is IOException or ArgumentException or InvalidOperationException) { return; } throw new Exception("Error expected"); }
 
-static void ExtendEpub(string path, bool changeOld = false)
+static void ExtendEpub(string path, bool changeOld = false, bool duplicate = false)
 {
     using var zip = ZipFile.Open(path, ZipArchiveMode.Update);
     var opf = zip.GetEntry("OEBPS/content.opf")!;
@@ -16,7 +16,9 @@ static void ExtendEpub(string path, bool changeOld = false)
     document.Descendants(ns + "manifest").Single().Add(new XElement(ns + "item", new XAttribute("id", "extra"), new XAttribute("href", "extra.xhtml"), new XAttribute("media-type", "application/xhtml+xml")));
     document.Descendants(ns + "spine").Single().Add(new XElement(ns + "itemref", new XAttribute("idref", "extra")));
     opf.Delete(); using (var writer = new StreamWriter(zip.CreateEntry("OEBPS/content.opf").Open())) writer.Write(document.ToString());
-    using (var writer = new StreamWriter(zip.CreateEntry("OEBPS/extra.xhtml").Open())) writer.Write("<html xmlns='http://www.w3.org/1999/xhtml'><body>Suite</body></html>");
+    string extra = "<html xmlns='http://www.w3.org/1999/xhtml'><body>Suite</body></html>";
+    if (duplicate) { using var reader = new StreamReader(zip.GetEntry("OEBPS/chapter.xhtml")!.Open()); extra = reader.ReadToEnd(); }
+    using (var writer = new StreamWriter(zip.CreateEntry("OEBPS/extra.xhtml").Open())) writer.Write(extra);
     if (changeOld) { var old = zip.GetEntry("OEBPS/chapter.xhtml")!; old.Delete(); using var writer = new StreamWriter(zip.CreateEntry("OEBPS/chapter.xhtml").Open()); writer.Write("<html>modifié</html>"); }
 }
 
@@ -69,6 +71,8 @@ try
     var incoming = Path.Combine(temp, "suite.epub"); File.WriteAllBytes(incoming, original); ExtendEpub(incoming);
     var badIncoming = Path.Combine(temp, "suite-modifiee.epub"); File.WriteAllBytes(badIncoming, original); ExtendEpub(badIncoming, true);
     Fails(() => AppendEdition.Compare(local.BookPath(added), badIncoming));
+    var duplicateIncoming = Path.Combine(temp, "suite-dupliquee.epub"); File.WriteAllBytes(duplicateIncoming, original); ExtendEpub(duplicateIncoming, duplicate: true);
+    Fails(() => AppendEdition.Compare(local.BookPath(added), duplicateIncoming));
     var comparison = AppendEdition.Compare(local.BookPath(added), incoming);
     Check(comparison.AddedSections == 1, "One section added");
     var incomingBytes = await File.ReadAllBytesAsync(incoming);

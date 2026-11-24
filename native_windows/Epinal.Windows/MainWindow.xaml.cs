@@ -275,7 +275,7 @@ public partial class MainWindow : Window
         try
         {
             library.Books.Remove(book); try { await library.SaveAsync(); } catch { library.Books.Add(book); throw; }
-            if (current == book) { current = null; Reader.CoreWebView2.NavigateToString("<p>Livre fermé.</p>"); CurrentTitle.Text = ""; }
+            if (current == book) { current = null; Reader.CoreWebView2.Navigate(Origin + "index.html"); CurrentTitle.Text = ""; }
             File.Delete(library.BookPath(book)); Refresh();
         }
         catch (Exception ex) { Error("Suppression impossible", ex); }

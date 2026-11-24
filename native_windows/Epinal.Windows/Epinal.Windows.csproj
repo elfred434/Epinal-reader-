@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <AssemblyName>Epinal.Native.Experimental</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Epinal.Core/Epinal.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="System.Speech" Version="8.0.0" />
+    <Content Include="Reader/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../third_party/flutter_epub_viewer/lib/assets/webpage/bundle/epub.js" Link="Reader/epub.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../third_party/flutter_epub_viewer/lib/assets/webpage/bundle/jszip.min.js" Link="Reader/jszip.min.js" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

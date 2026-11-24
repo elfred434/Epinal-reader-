@@ -1,0 +1,45 @@
+name: Tester Épinal Windows natif expérimental
+on:
+  push:
+    branches: [epinal-native-experimental]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Tester le cœur et les copies EPUB
+        run: dotnet run --project native_windows/Epinal.Core.Tests/Epinal.Core.Tests.csproj --configuration Release
+      - name: Vérifier le JavaScript
+        run: node --check native_windows/Epinal.Windows/Reader/reader.js
+      - name: Compiler la version expérimentale
+        run: dotnet publish native_windows/Epinal.Windows/Epinal.Windows.csproj -c Release -r win-x64 --self-contained true -o native_windows/publish
+      - name: Compiler le programme d’installation séparé
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" native_windows/installer/experimental.iss
+          if ($LASTEXITCODE -ne 0) { throw 'La compilation Inno Setup a échoué.' }
+      - name: Tester installation et démarrage
+        shell: pwsh
+        run: |
+          $setup = Join-Path $PWD 'native_windows/installer/Epinal-Native-Experimental-Setup-x64.exe'
+          $install = Join-Path $env:RUNNER_TEMP 'Epinal-Native-Experimental'
+          $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$install`"" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "Installation impossible ($($installer.ExitCode))." }
+          $app = Join-Path $install 'Epinal.Native.Experimental.exe'
+          if (-not (Test-Path $app)) { throw 'Exécutable manquant.' }
+          $proc = Start-Process -FilePath $app -WorkingDirectory $install -PassThru
+          Start-Sleep -Seconds 15
+          $proc.Refresh()
+          if ($proc.HasExited) { throw "L’application s’est arrêtée au démarrage ($($proc.ExitCode))." }
+          Stop-Process -Id $proc.Id -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: epinal-windows-native-experimental
+          path: native_windows/installer/Epinal-Native-Experimental-Setup-x64.exe
+          retention-days: 7

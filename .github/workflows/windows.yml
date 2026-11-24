@@ -45,7 +45,7 @@ jobs:
           $log = Get-Content bridge-test.log -Raw
           $passed = $log -match 'EPINAL_NULL_REPLY_OK' -and ($log -match 'Passing tests' -or $log -match '1 test passed')
           $failed = $log -match 'Test failed\.|EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK|[0-9]+ tests? failed|Lost connection to device'
-          if (!$passed -or $failed) { throw 'Le test du lecteur et du pont JavaScript n’a pas réussi.' }
+          if (!$passed -or $failed) { throw "Le test du lecteur et du pont JavaScript a échoué." }
           if ($exitCode -ne 0) {
             $cleanup = $log -match 'No tests were found' -and $log -match '0 tests passed'
             if (!$cleanup) { exit $exitCode }

@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   android:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6

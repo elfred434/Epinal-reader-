@@ -96,9 +96,7 @@ class Library {
   Future<void> init() async {
     prefs = await SharedPreferences.getInstance();
     categories = prefs.getStringList('categories.v1') ?? [];
-    final root = Platform.isWindows
-        ? await getApplicationSupportDirectory()
-        : await getApplicationDocumentsDirectory();
+    final root = await getApplicationDocumentsDirectory();
     dir = Directory('${root.path}/books');
     await dir.create(recursive: true);
     try {

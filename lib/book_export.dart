@@ -1,6 +1,3 @@
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
 import 'storage.dart';
 
 /// Suggest a portable file name while keeping the EPUB extension intact.
@@ -31,23 +28,6 @@ String exportFileName(String title) {
 Future<bool> exportBook(Library library, Book book) async {
   if (!await library.file(book).exists()) {
     throw const FormatException('Le fichier de ce livre est introuvable.');
-  }
-  if (Platform.isWindows) {
-    final destination = await FilePicker.platform.saveFile(
-      dialogTitle: 'Exporter le livre EPUB',
-      fileName: exportFileName(book.title),
-      type: FileType.custom,
-      allowedExtensions: ['epub'],
-    );
-    if (destination == null) return false;
-    final source = library.file(book);
-    if (p.equals(p.absolute(source.path), p.absolute(destination))) {
-      throw const FormatException(
-        'Choisissez un emplacement différent du livre dans Épinal.',
-      );
-    }
-    await source.copy(destination);
-    return true;
   }
   return await Library.native.invokeMethod<bool>('exportBook', {
         'bookId': book.id,

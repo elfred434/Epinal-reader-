@@ -73,7 +73,7 @@ void main() {
         cfi: 'epubcfi(/6/4!/4/2:11)',
         progress: .63,
       );
-      final windows = Book(
+      final otherDevice = Book(
         id: 'b',
         title: 'Roman',
         author: 'Auteur',
@@ -81,35 +81,35 @@ void main() {
         progress: .1,
         categories: ['Romans'],
       );
-      library.books = [android, windows];
+      library.books = [android, otherDevice];
       final bytes = await File('test/fixtures/with_cover.epub').readAsBytes();
       try {
         await library.file(android).writeAsBytes(bytes);
-        await library.file(windows).writeAsBytes(bytes);
-        await library.putEntries('marks', windows, [
+        await library.file(otherDevice).writeAsBytes(bytes);
+        await library.putEntries('marks', otherDevice, [
           {'cfi': 'un signet'},
         ]);
         final code = await createReadingPositionCode(library, android);
-        await applyReadingPositionCode(library, windows, code);
-        expect(windows.cfi, android.cfi);
-        expect(windows.progress, .63);
+        await applyReadingPositionCode(library, otherDevice, code);
+        expect(otherDevice.cfi, android.cfi);
+        expect(otherDevice.progress, .63);
         final saved =
             jsonDecode(library.prefs.getString('library.v2')!) as List;
         expect(saved[1]['cfi'], android.cfi);
         expect(saved[1]['progress'], .63);
-        expect(windows.categories, ['Romans']);
-        expect(library.entries('marks', windows), hasLength(1));
+        expect(otherDevice.categories, ['Romans']);
+        expect(library.entries('marks', otherDevice), hasLength(1));
         // Different bytes with the same title must never change the position.
-        await library.file(windows).writeAsBytes([...bytes, 0]);
+        await library.file(otherDevice).writeAsBytes([...bytes, 0]);
         final before = library.prefs.getString('library.v2');
         await expectLater(
-          applyReadingPositionCode(library, windows, code),
+          applyReadingPositionCode(library, otherDevice, code),
           throwsFormatException,
         );
-        expect(windows.cfi, android.cfi);
+        expect(otherDevice.cfi, android.cfi);
         expect(library.prefs.getString('library.v2'), before);
         await expectLater(
-          applyReadingPositionCode(library, windows, 'invalide'),
+          applyReadingPositionCode(library, otherDevice, 'invalide'),
           throwsFormatException,
         );
         expect(library.prefs.getString('library.v2'), before);

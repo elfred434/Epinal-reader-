@@ -2,15 +2,10 @@ name: Construire et publier l’APK Flutter
 on:
   push:
     branches: [main]
-    # Windows-only and documentation changes must not publish another APK.
+    # Documentation and CI configuration do not publish another APK.
     paths-ignore:
       - '.github/workflows/**'
       - 'README.md'
-      - 'windows/**'
-      - 'installer/**'
-      - 'integration_test/windows_*.dart'
-      - 'third_party/flutter_inappwebview_windows/**'
-      - 'native_windows/**'
   workflow_dispatch:
 permissions:
   contents: write

@@ -28,32 +28,13 @@ class Updater {
     final info = await PackageInfo.fromPlatform();
     return parseRelease(
       jsonDecode(r.body) as Map<String, dynamic>,
-      installedBuild: installedBuild(
-        info.version,
-        info.buildNumber,
-        windows: Platform.isWindows,
-      ),
-      windows: Platform.isWindows,
+      installedBuild: int.tryParse(info.buildNumber) ?? 0,
     );
-  }
-
-  /// Windows VERSIONINFO contains a dotted product version without +build.
-  static int installedBuild(
-    String version,
-    String buildNumber, {
-    required bool windows,
-  }) {
-    if (!windows) return int.tryParse(buildNumber) ?? 0;
-    final match = RegExp(r'^1\.0\.(\d+)(?:\.\d+)?$').firstMatch(version);
-    return match == null
-        ? (int.tryParse(buildNumber) ?? 0)
-        : int.parse(match.group(1)!);
   }
 
   static AppUpdate? parseRelease(
     Map<String, dynamic> j, {
     required int installedBuild,
-    required bool windows,
   }) {
     final version = j['tag_name'] as String? ?? '';
     final match = RegExp(r'^v1\.0\.(\d+)$').firstMatch(version);
@@ -61,14 +42,9 @@ class Updater {
     final build = int.parse(match.group(1)!);
     if (build <= installedBuild) return null;
     final assets = j['assets'] as List;
-    final fileName = windows ? 'Epinal-Setup-x64.exe' : 'Epinal.apk';
+    const fileName = 'Epinal.apk';
     final asset = assets.where((a) => a['name'] == fileName).firstOrNull;
-    if (asset == null)
-      throw Exception(
-        windows
-            ? 'La version Windows de cette publication n’est pas encore disponible.'
-            : 'APK absent de la version publiée.',
-      );
+    if (asset == null) throw Exception('APK absent de la version publiée.');
     final url = Uri.parse(asset['browser_download_url'] as String);
     if (url.scheme != 'https' ||
         url.host != 'github.com' ||
@@ -80,15 +56,6 @@ class Updater {
       throw Exception('Empreinte SHA-256 absente ou invalide.');
     }
     return AppUpdate(build, version, url, digest.substring(7));
-  }
-
-  /// On Windows users download the setup from GitHub and confirm installation.
-  static Future<void> openWindowsRelease(AppUpdate update) async {
-    if (!Platform.isWindows) throw UnsupportedError('Windows uniquement');
-    // Version was validated against v1.0.NUMBER in parseRelease.
-    final page =
-        'https://github.com/elfred434/Epinal-reader-/releases/tag/${update.version}';
-    await Process.start('explorer.exe', [page]);
   }
 
   static Future<void> download(AppUpdate update) async {

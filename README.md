@@ -69,30 +69,10 @@ Dans la bibliothèque, ouvrez le menu **⋮** du livre, puis **Exporter le livre
 
 L’export contient le contenu de l’EPUB, pas les données propres à Épinal : progression, signets, notes, surlignages, catégories et couverture personnalisée ne sont pas intégrés. En cas d’échec pendant l’écriture, un fichier incomplet peut rester dans le dossier choisi. Vérifiez que vous avez le droit de copier ou partager le livre.
 
-## Épinal pour Windows
-Téléchargez `Epinal-Setup-x64.exe` depuis la dernière Release GitHub, puis lancez le programme d’installation. Suivez les étapes : Épinal est ajouté au **menu Démarrer** et une icône sur le **Bureau** est proposée (cochée par défaut). L’installation s’effectue pour l’utilisateur Windows courant, sans nécessiter normalement de droits administrateur. L’application apparaît aussi dans les applications installées de Windows et peut y être désinstallée.
-
-Cette version est destinée à Windows 10/11 64 bits et nécessite le **Microsoft Edge WebView2 Runtime** ; installez-le depuis Microsoft si le lecteur indique qu’il est absent. Le setup et l’application Windows ne sont pas signés : Windows peut afficher un avertissement. Le ZIP portable `Epinal-Windows-x64.zip` reste disponible en alternative ; il faut extraire toute l’archive avant de lancer `Epinal.exe`.
-
-Les livres et réglages sont stockés dans les données de l’utilisateur Windows, séparément du programme. Ils ne sont pas synchronisés automatiquement avec Android. Pour transférer un livre mis à jour, exportez-le en EPUB sur l’autre appareil, copiez-le sur le PC, puis importez-le. Les positions, annotations, catégories et couvertures personnalisées ne sont pas incluses dans cet export.
-
-Pour mettre à jour, utilisez **Paramètres → Vérifier les mises à jour**, ouvrez la Release proposée et téléchargez le nouveau setup. Fermez Épinal si le programme d’installation vous le demande, puis installez la mise à jour par-dessus la précédente. Les livres et réglages sont conservés ; une désinstallation les conserve également. La mise à jour nécessite votre intervention, elle n’est pas silencieuse.
-
-Le test d’intégration WebView2 peut réussir puis signaler une erreur de nettoyage du dossier temporaire du harnais Flutter sur le runner Windows ; cette anomalie est signalée dans les logs et ne remplace pas un essai sur un PC réel.
-
-Chaque push sur `main` lance la compilation et la publication de l’APK Android signé. Après cette publication, GitHub Actions teste le chargement d’un EPUB avec WebView2, compile Windows x64, teste installation, raccourcis, réinstallation et conservation des données, puis ajoute le setup et le ZIP à la même Release. Les fichiers Windows peuvent apparaître quelques minutes après l’APK ; si leur compilation échoue, l’APK Android reste publié.
-
 ## Transférer une position de lecture
-Pour reprendre le même livre sur Android ou Windows sans compte ni serveur :
+Pour reprendre le même livre sur deux appareils Android sans compte ni serveur :
 1. Sur l’appareil source, ouvrez le livre et allez à l’endroit souhaité, puis revenez à la bibliothèque. Dans **⋮ → Transférer la position → Créer un code**, touchez **Copier le code**.
 2. Transmettez ce code à l’autre appareil, par exemple par message, e-mail ou un presse-papiers partagé. La copie ne traverse pas automatiquement les appareils.
 3. Sur l’appareil destinataire, importez le même EPUB si nécessaire. Sur ce livre, choisissez **⋮ → Transférer la position → Recevoir un code**, collez le code et touchez **Appliquer**. Ouvrez le livre pour reprendre à la position reçue.
 
 Le code contient un repère EPUB précis, un pourcentage et l’empreinte SHA-256 du fichier, mais ne contient pas le livre. Les fichiers doivent être exactement identiques octet pour octet ; deux éditions ayant le même titre ou des fichiers EPUB reconditionnés peuvent être refusés. Pour un livre complété, exportez l’édition mise à jour et utilisez cette même copie sur l’autre appareil. En cas d’erreur ou de différence, la position existante n’est pas remplacée. Ce transfert manuel ne synchronise pas les annotations, signets, catégories ni modifications futures et ne vérifie pas l’identité de l’expéditeur ; acceptez seulement les codes de confiance.
-
-## Versions Android et Windows indépendantes
-
-- La branche `main` construit et publie Android sous un tag `v1.0.N` ; elle ne construit plus Windows.
-- La branche `windows` construit et publie Windows sous un tag `windows-v1.0.N` ; les changements Windows ne déclenchent pas de build Android.
-- La release Windows ne modifie pas le `latest` utilisé par Android. À partir de la première version issue de la branche Windows, le lecteur Windows recherche ses propres releases stables. Installez une première fois cette version Windows manuellement.
-- La branche expérimentale native C# reste séparée. Les changements communs doivent être reportés et vérifiés explicitement dans chaque branche concernée.
